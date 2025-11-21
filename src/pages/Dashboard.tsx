@@ -173,132 +173,134 @@ const Dashboard = () => {
   ];
 
   return (
-    <div className="min-h-screen pb-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-              <p className="mt-2 text-gray-600">View and manage all notifications</p>
-            </div>
-            <button
-              onClick={() => setIsScheduleModalOpen(true)}
-              className="px-4 py-2 bg-apple-blue text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Schedule Notification
-            </button>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex items-center gap-1 border-b border-gray-200">
-            {tabs.map((tab) => (
+    <>
+      <div className="min-h-screen pb-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+                <p className="mt-2 text-gray-600">View and manage all notifications</p>
+              </div>
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-3 font-medium text-sm transition-colors relative ${
-                  activeTab === tab.id
-                    ? 'text-apple-blue'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
+                onClick={() => setIsScheduleModalOpen(true)}
+                className="px-4 py-2 bg-apple-blue text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center gap-2"
               >
-                {tab.label}
-                {activeTab === tab.id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-apple-blue"></span>
-                )}
+                <Plus className="w-4 h-4" />
+                Schedule Notification
               </button>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 text-apple-blue animate-spin" />
-          </div>
-        ) : filteredNotifications.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-            <p className="text-gray-500 text-lg">No notifications found</p>
-            <p className="text-gray-400 mt-2">
-              {activeTab === 'scheduled' 
-                ? 'No scheduled notifications'
-                : activeTab === 'pending'
-                ? 'No pending notifications'
-                : activeTab === 'sent'
-                ? 'No sent notifications'
-                : 'Notifications will appear here once they\'re created'}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {filteredNotifications.map((notification) => (
-              <div
-                key={notification.id}
-                className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-all relative"
-              >
+            {/* Tabs */}
+            <div className="flex items-center gap-1 border-b border-gray-200">
+              {tabs.map((tab) => (
                 <button
-                  onClick={() => handleDelete(notification)}
-                  disabled={deletingId === notification.id}
-                  className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed group"
-                  title="Delete notification"
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-3 font-medium text-sm transition-colors relative ${
+                    activeTab === tab.id
+                      ? 'text-apple-blue'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
                 >
-                  {deletingId === notification.id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <X className="w-4 h-4" />
+                  {tab.label}
+                  {activeTab === tab.id && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-apple-blue"></span>
                   )}
                 </button>
+              ))}
+            </div>
+          </div>
 
-                <div className="flex items-start justify-between gap-4 pr-10">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {notification.title}
-                      </h3>
-                      {getStatusBadge(notification.status)}
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 text-apple-blue animate-spin" />
+            </div>
+          ) : filteredNotifications.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+              <p className="text-gray-500 text-lg">No notifications found</p>
+              <p className="text-gray-400 mt-2">
+                {activeTab === 'scheduled' 
+                  ? 'No scheduled notifications'
+                  : activeTab === 'pending'
+                  ? 'No pending notifications'
+                  : activeTab === 'sent'
+                  ? 'No sent notifications'
+                  : 'Notifications will appear here once they\'re created'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredNotifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-all relative"
+                >
+                  <button
+                    onClick={() => handleDelete(notification)}
+                    disabled={deletingId === notification.id}
+                    className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed group"
+                    title="Delete notification"
+                  >
+                    {deletingId === notification.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <X className="w-4 h-4" />
+                    )}
+                  </button>
+
+                  <div className="flex items-start justify-between gap-4 pr-10">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {notification.title}
+                        </h3>
+                        {getStatusBadge(notification.status)}
+                      </div>
+                      <p className="text-gray-600 mb-3">
+                        {truncateText(notification.body, 100)}
+                      </p>
+                      <div className="flex items-center gap-4 text-sm text-gray-400">
+                        <span>Created: {formatDate(notification.createdAt)}</span>
+                        {notification.sendAt && (notification.status === 'pending' || !notification.status) && (
+                          <div className="flex items-center gap-2">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              Scheduled: {formatDate(notification.sendAt)}
+                            </span>
+                            <button
+                              onClick={() => handleEditSchedule(notification)}
+                              className="p-1 text-gray-400 hover:text-apple-blue transition-colors rounded hover:bg-blue-50"
+                              title="Edit or cancel schedule"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-gray-600 mb-3">
-                      {truncateText(notification.body, 100)}
-                    </p>
-                    <div className="flex items-center gap-4 text-sm text-gray-400">
-                      <span>Created: {formatDate(notification.createdAt)}</span>
-                      {notification.sendAt && (notification.status === 'pending' || !notification.status) && (
-                        <div className="flex items-center gap-2">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            Scheduled: {formatDate(notification.sendAt)}
-                          </span>
-                          <button
-                            onClick={() => handleEditSchedule(notification)}
-                            className="p-1 text-gray-400 hover:text-apple-blue transition-colors rounded hover:bg-blue-50"
-                            title="Edit or cancel schedule"
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
+                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => handleView(notification)}
+                        className="px-4 py-2 text-apple-blue hover:bg-blue-50 rounded-lg transition-colors font-medium flex items-center gap-2 w-full sm:w-auto"
+                      >
+                        <Eye className="w-4 h-4" />
+                        View
+                      </button>
+                      <button
+                        onClick={() => handleSend(notification)}
+                        className="px-4 py-2 bg-apple-blue text-white hover:bg-blue-600 rounded-lg transition-colors font-medium flex items-center gap-2 w-full sm:w-auto"
+                      >
+                        <Send className="w-4 h-4" />
+                        Send
+                      </button>
                     </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => handleView(notification)}
-                      className="px-4 py-2 text-apple-blue hover:bg-blue-50 rounded-lg transition-colors font-medium flex items-center gap-2 w-full sm:w-auto"
-                    >
-                      <Eye className="w-4 h-4" />
-                      View
-                    </button>
-                    <button
-                      onClick={() => handleSend(notification)}
-                      className="px-4 py-2 bg-apple-blue text-white hover:bg-blue-600 rounded-lg transition-colors font-medium flex items-center gap-2 w-full sm:w-auto"
-                    >
-                      <Send className="w-4 h-4" />
-                      Send
-                    </button>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <NotificationModal
@@ -335,7 +337,7 @@ const Dashboard = () => {
         isVisible={toast.isVisible}
         onClose={() => setToast({ ...toast, isVisible: false })}
       />
-    </div>
+    </>
   );
 };
 

@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
+import Segments from './pages/Segments';
 import NewNotification from './pages/NewNotification';
 
 function App() {
@@ -17,13 +18,16 @@ function App() {
             path="/*"
             element={
               <ProtectedRoute>
-                <div className="min-h-screen bg-gray-50">
+                <div className="min-h-screen flex bg-gray-50">
                   <Navbar />
-                  <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/users" element={<Users />} />
-                    <Route path="/new-notification" element={<NewNotification />} />
-                  </Routes>
+                  <div className="flex-1 min-w-0">
+                    <Routes>
+                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/users" element={<Users />} />
+                      <Route path="/segments" element={<Segments />} />
+                      <Route path="/new-notification" element={<NewNotification />} />
+                    </Routes>
+                  </div>
                 </div>
               </ProtectedRoute>
             }

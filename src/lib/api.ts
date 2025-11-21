@@ -301,3 +301,98 @@ export const updateOrCancelScheduledNotification = async (
   }
 };
 
+export interface Segment {
+  id: string;
+  name: string;
+  segmentId: string;
+  segmentName: string;
+  [key: string]: any; // Allow additional properties from Shopify
+}
+
+export const fetchSegments = async (): Promise<Segment[]> => {
+  try {
+    const response = await axios.get('https://us-central1-premier-ikon.cloudfunctions.net/fetchSegmentNamesHandler');
+    const data = response.data;
+    
+    // Handle the response structure with segmentsWithIds array
+    if (data && typeof data === 'object' && Array.isArray(data.segmentsWithIds)) {
+      return data.segmentsWithIds.map((segment: any) => ({
+        id: segment.id || '',
+        name: segment.segmentName || segment.name || '',
+        segmentId: segment.segmentId || '',
+        segmentName: segment.segmentName || '',
+        ...segment,
+      }));
+    }
+    
+    // Fallback: If data is already an array
+    if (Array.isArray(data)) {
+      return data.map((segment, index) => ({
+        id: segment.id || segment.segmentId || `segment-${index}`,
+        name: segment.segmentName || segment.name || '',
+        segmentId: segment.segmentId || '',
+        segmentName: segment.segmentName || segment.name || '',
+        ...segment,
+      }));
+    }
+    
+    // If data is an object with a segments array property
+    if (data && typeof data === 'object' && Array.isArray(data.segments)) {
+      return data.segments.map((segment: any, index: number) => ({
+        id: segment.id || segment.segmentId || `segment-${index}`,
+        name: segment.segmentName || segment.name || '',
+        segmentId: segment.segmentId || '',
+        segmentName: segment.segmentName || segment.name || '',
+        ...segment,
+      }));
+    }
+    
+    console.warn('Unexpected response format from fetchSegmentNamesHandler:', data);
+    return [];
+  } catch (error) {
+    console.error('Error fetching segments:', error);
+    return [];
+  }
+};
+
+export const syncSegments = async (): Promise<void> => {
+  try {
+    await axios.get('https://us-central1-premier-ikon.cloudfunctions.net/fetchCustomerSegmentsHandler');
+  } catch (error) {
+    console.error('Error syncing segments:', error);
+    throw error;
+  }
+};
+
+export const fetchSegmentUsers = async (segmentId: string): Promise<User[]> => {
+  try {
+    const response = await axios.get('https://us-central1-premier-ikon.cloudfunctions.net/matchUsersToSegmentsHandler', {
+      params: {
+        segmentName: segmentId,
+      },
+    });
+    const data = response.data;
+    
+    // Handle different response structures
+    if (Array.isArray(data)) {
+      return data;
+    }
+    
+    // If data is an object with a users array property
+    if (data && typeof data === 'object' && Array.isArray(data.users)) {
+      return data.users;
+    }
+    
+    // If data is an object with a data array property
+    if (data && typeof data === 'object' && Array.isArray(data.data)) {
+      return data.data;
+    }
+    
+    console.warn('Unexpected response format from matchUsersToSegmentsHandler:', data);
+    return [];
+  } catch (error) {
+    console.error('Error fetching segment users:', error);
+    return [];
+  }
+};
+
