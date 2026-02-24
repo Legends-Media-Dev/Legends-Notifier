@@ -58,6 +58,20 @@ const Users = () => {
         </div>
 
         <div className="mb-6">
+          <div className="inline-flex items-center gap-3 px-5 py-4 bg-white border border-gray-200 rounded-xl">
+            <div className="w-12 h-12 rounded-xl bg-apple-blue/10 flex items-center justify-center">
+              <UserIcon className="w-6 h-6 text-apple-blue" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-500">Push notifications enabled</p>
+              <p className="text-2xl font-bold text-gray-900 tabular-nums">
+                {loading ? '—' : (Array.isArray(users) ? users.length : 0).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
