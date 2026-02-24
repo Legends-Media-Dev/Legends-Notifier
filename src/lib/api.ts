@@ -364,6 +364,63 @@ export const syncSegments = async (): Promise<void> => {
   }
 };
 
+const GIVEAWAY_FETCH_URL = 'https://us-central1-premier-ikon.cloudfunctions.net/fetchGiveawayInfoHandler';
+const GIVEAWAY_PUSH_URL = 'https://us-central1-premier-ikon.cloudfunctions.net/pushGiveawayInfoHandler';
+
+export interface Giveaway {
+  id: string;
+  entries_multiplier: number;
+  start_date: string; // ISO date string
+  end_date: string;   // ISO date string
+}
+
+export interface FetchGiveawayResponse {
+  giveaways: Giveaway[];
+  total: number;
+}
+
+export interface PushGiveawayPayload {
+  giveawayId?: string;
+  id?: string;
+  start_date?: string;
+  end_date?: string;
+  entries_multiplier?: number;
+}
+
+export interface PushGiveawayResponse {
+  id: string;
+  created: boolean;
+}
+
+export const fetchGiveawayInfo = async (): Promise<Giveaway[]> => {
+  try {
+    const response = await axios.get<FetchGiveawayResponse>(GIVEAWAY_FETCH_URL);
+    const data = response.data;
+    if (data?.giveaways && Array.isArray(data.giveaways)) {
+      return data.giveaways.map((g: any) => ({
+        id: g.id || '',
+        entries_multiplier: g.entries_multiplier ?? 1,
+        start_date: typeof g.start_date?.toDate === 'function' ? g.start_date.toDate().toISOString() : (g.start_date || ''),
+        end_date: typeof g.end_date?.toDate === 'function' ? g.end_date.toDate().toISOString() : (g.end_date || ''),
+      }));
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching giveaway info:', error);
+    return [];
+  }
+};
+
+export const pushGiveawayInfo = async (payload: PushGiveawayPayload, method: 'POST' | 'PUT' = 'POST'): Promise<PushGiveawayResponse> => {
+  const response = await axios.request<PushGiveawayResponse>({
+    url: GIVEAWAY_PUSH_URL,
+    method,
+    data: payload,
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return response.data;
+};
+
 export const fetchSegmentUsers = async (segmentId: string): Promise<User[]> => {
   try {
     const response = await axios.get('https://us-central1-premier-ikon.cloudfunctions.net/matchUsersToSegmentsHandler', {

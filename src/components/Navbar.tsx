@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, LogOut, LayoutDashboard, Users as UsersIcon, Plus, ChevronDown, User, FolderTree } from 'lucide-react';
+import { Bell, LogOut, LayoutDashboard, Users as UsersIcon, Plus, ChevronDown, User, FolderTree, Gift } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const Navbar = () => {
@@ -34,6 +34,7 @@ const Navbar = () => {
         { path: '/segments', label: 'Segments', icon: FolderTree },
       ]
     },
+    { path: '/giveaway', label: 'Giveaway', icon: Gift },
     { path: '/new-notification', label: 'New Notification', icon: Plus },
   ];
 

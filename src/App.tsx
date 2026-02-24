@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Segments from './pages/Segments';
+import Giveaway from './pages/Giveaway';
 import NewNotification from './pages/NewNotification';
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/users" element={<Users />} />
                       <Route path="/segments" element={<Segments />} />
+                      <Route path="/giveaway" element={<Giveaway />} />
                       <Route path="/new-notification" element={<NewNotification />} />
                     </Routes>
                   </div>
