@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Loader2, Smartphone, Calendar, User as UserIcon, Mail, Monitor } from 'lucide-react';
+import { Search, Loader2, Smartphone, Calendar, User as UserIcon, Mail, Monitor, Users as UsersGroupIcon } from 'lucide-react';
 import { fetchUsers, User } from '../lib/api';
 import { formatDate } from '../lib/utils';
 
@@ -16,11 +16,10 @@ const Users = () => {
     try {
       setLoading(true);
       const data = await fetchUsers();
-      // Ensure we always set an array
       setUsers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load users:', error);
-      setUsers([]); // Ensure it's always an array
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -29,14 +28,14 @@ const Users = () => {
   const filteredUsers = useMemo(() => {
     // Ensure users is always an array
     const usersArray = Array.isArray(users) ? users : [];
-    
+
     // Filter out any invalid users (null, undefined)
     const validUsers = usersArray.filter(
       (user) => user && typeof user === 'object'
     );
-    
+
     if (!searchQuery.trim()) return validUsers;
-    
+
     const query = searchQuery.toLowerCase();
     return validUsers.filter(
       (user) =>
@@ -48,6 +47,16 @@ const Users = () => {
         user.userId?.toLowerCase().includes(query)
     );
   }, [users, searchQuery]);
+
+  // Groups come from each user object in the fetchUsers response
+  const getGroupsForUser = (user: User): string[] => {
+    const u = user as Record<string, unknown>;
+    const g = (u.groups ?? u.group ?? u.userGroups) as string[] | { id?: string; name?: string }[] | undefined;
+    if (!g || !Array.isArray(g)) return [];
+    return g
+      .map((item) => (typeof item === 'string' ? item : (item?.name ?? (item as { id?: string }).id ?? '')))
+      .filter(Boolean) as string[];
+  };
 
   return (
     <div className="min-h-screen pb-20">
@@ -113,6 +122,9 @@ const Users = () => {
                       Expo Token
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Groups
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Last Updated
                     </th>
                   </tr>
@@ -161,6 +173,23 @@ const Users = () => {
                         <code className="text-sm text-gray-600 bg-gray-50 px-2 py-1 rounded font-mono">
                           {truncateToken(user.token)}
                         </code>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-wrap gap-1.5">
+                          {getGroupsForUser(user).length === 0 ? (
+                            <span className="text-gray-400 text-sm">—</span>
+                          ) : (
+                            getGroupsForUser(user).map((groupName) => (
+                              <span
+                                key={groupName}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-apple-blue/10 text-apple-blue text-xs font-medium"
+                              >
+                                <UsersGroupIcon className="w-3 h-3" />
+                                {groupName}
+                              </span>
+                            ))
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">

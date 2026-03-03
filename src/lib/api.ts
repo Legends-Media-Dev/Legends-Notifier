@@ -12,6 +12,8 @@ export interface User {
   osVersion?: string;
   token?: string;
   updatedAt?: string;
+  /** Group names or group objects included from fetchUsers */
+  groups?: string[] | { id?: string; name?: string }[];
 }
 
 export interface Notification {
@@ -24,6 +26,7 @@ export interface Notification {
   targetTokens?: string[];
   status?: string;
   sendAt?: string; // ISO date string for scheduled notifications
+  userGroup?: string;
 }
 
 export interface UserGroup {
@@ -129,6 +132,7 @@ export const fetchNotifications = async (): Promise<Notification[]> => {
         targetTokens: notif.targetTokens || [],
         status: notif.status || 'pending',
         sendAt: notif.sendAt || undefined,
+        userGroup: notif.userGroup || undefined,
       };
     });
   } catch (error) {
@@ -166,6 +170,7 @@ export const fetchScheduledNotifications = async (): Promise<Notification[]> => 
       targetTokens: notif.targetTokens || [],
       status: notif.status || 'pending',
       sendAt: notif.sendAt || undefined,
+      userGroup: notif.userGroup || undefined,
     }));
   } catch (error) {
     console.error('Error fetching scheduled notifications:', error);

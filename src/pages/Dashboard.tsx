@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Eye, Send, Loader2, X, Calendar, Plus, Pencil } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Eye, Send, Loader2, X, Calendar, Plus, Pencil, FileText, Users } from 'lucide-react';
 import { fetchNotifications, fetchScheduledNotifications, Notification, deleteNotification } from '../lib/api';
 import { formatDate, truncateText } from '../lib/utils';
 import NotificationModal from '../components/NotificationModal';
@@ -165,6 +166,13 @@ const Dashboard = () => {
     );
   };
 
+  const formatUserGroupLabel = (userGroup?: string) => {
+    if (!userGroup || !userGroup.trim()) return 'All Users';
+    const lower = userGroup.toLowerCase();
+    if (lower === 'allusers' || lower === 'all') return 'All Users';
+    return userGroup.trim();
+  };
+
   const tabs: { id: TabType; label: string }[] = [
     { id: 'all', label: 'All' },
     { id: 'scheduled', label: 'Scheduled' },
@@ -182,13 +190,22 @@ const Dashboard = () => {
                 <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
                 <p className="mt-2 text-gray-600">View and manage all notifications</p>
               </div>
-              <button
-                onClick={() => setIsScheduleModalOpen(true)}
-                className="px-4 py-2 bg-apple-blue text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Schedule Notification
-              </button>
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/new-notification"
+                  className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                >
+                  <FileText className="w-4 h-4" />
+                  New Notification
+                </Link>
+                <button
+                  onClick={() => setIsScheduleModalOpen(true)}
+                  className="px-4 py-2 bg-apple-blue text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Schedule Notification
+                </button>
+              </div>
             </div>
 
             {/* Tabs */}
@@ -255,7 +272,13 @@ const Dashboard = () => {
                         <h3 className="text-lg font-semibold text-gray-900">
                           {notification.title}
                         </h3>
-                        {getStatusBadge(notification.status)}
+                        <div className="flex flex-col items-end gap-1">
+                          {getStatusBadge(notification.status)}
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                            <Users className="w-3 h-3" />
+                            {formatUserGroupLabel(notification.userGroup)}
+                          </span>
+                        </div>
                       </div>
                       <p className="text-gray-600 mb-3">
                         {truncateText(notification.body, 100)}

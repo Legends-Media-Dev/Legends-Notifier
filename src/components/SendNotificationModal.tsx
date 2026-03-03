@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send, Loader2, ChevronDown, Save } from 'lucide-react';
-import { Notification, User, fetchUsers, executeNotification, updateNotification } from '../lib/api';
+import { Notification, User, UserGroup, fetchUsers, fetchUserGroups, executeNotification, updateNotification } from '../lib/api';
 import Toast from './Toast';
 
 interface SendNotificationModalProps {
@@ -21,10 +21,13 @@ const SendNotificationModal = ({
   const [body, setBody] = useState('');
   const [jsonData, setJsonData] = useState('');
   const [jsonError, setJsonError] = useState('');
-  const [recipientOption, setRecipientOption] = useState<'all' | 'custom'>('all');
+  // 'all' = All Users, 'custom' = Select Users, otherwise = group id
+  const [selectedRecipient, setSelectedRecipient] = useState<string>('all');
+  const [userGroups, setUserGroups] = useState<UserGroup[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState({ isVisible: false, message: '', type: 'success' as 'success' | 'error' | 'info' });
@@ -33,6 +36,12 @@ const SendNotificationModal = ({
   const [originalTitle, setOriginalTitle] = useState('');
   const [originalBody, setOriginalBody] = useState('');
   const [originalData, setOriginalData] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      loadUserGroups();
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (notification && isOpen) {
@@ -47,16 +56,53 @@ const SendNotificationModal = ({
       setOriginalBody(initialBody);
       setOriginalData(initialData);
       setJsonError('');
-      setRecipientOption('all');
       setSelectedUsers([]);
+
+      // Pre-select the notification's user group when opening
+      const ug = (notification.userGroup || '').trim().toLowerCase();
+      if (!ug || ug === 'allusers' || ug === 'all') {
+        setSelectedRecipient('all');
+      } else {
+        // Match by group id, name, or metaName (will be set after groups load if needed)
+        setSelectedRecipient(notification.userGroup ?? 'all');
+      }
     }
   }, [notification, isOpen]);
 
   useEffect(() => {
-    if (isOpen && recipientOption === 'custom') {
+    // After groups load, normalize selectedRecipient to a group id so the dropdown shows the right option
+    if (!notification || !isOpen || userGroups.length === 0) return;
+    const ug = (notification.userGroup || '').trim();
+    if (!ug || ug.toLowerCase() === 'allusers' || ug.toLowerCase() === 'all') return;
+    const matched = userGroups.find(
+      (g) =>
+        g.id === ug ||
+        (g.name || '').toLowerCase() === ug.toLowerCase() ||
+        (g.metaName || '').toLowerCase() === ug.toLowerCase()
+    );
+    if (matched && selectedRecipient !== matched.id) {
+      setSelectedRecipient(matched.id);
+    }
+  }, [notification, isOpen, userGroups, selectedRecipient]);
+
+  const loadUserGroups = async () => {
+    try {
+      setIsLoadingGroups(true);
+      const data = await fetchUserGroups();
+      setUserGroups(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load user groups:', error);
+      setUserGroups([]);
+    } finally {
+      setIsLoadingGroups(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && selectedRecipient === 'custom') {
       loadUsers();
     }
-  }, [isOpen, recipientOption]);
+  }, [isOpen, selectedRecipient]);
 
   const loadUsers = async () => {
     try {
@@ -113,14 +159,12 @@ const SendNotificationModal = ({
       // Get target tokens based on selection
       let targetTokens: string[] = [];
       
-      if (recipientOption === 'all') {
-        // Fetch all users and get their tokens
+      if (selectedRecipient === 'all') {
         const allUsers = await fetchUsers();
         targetTokens = allUsers
           .filter((user) => user.token && typeof user.token === 'string')
           .map((user) => user.token as string);
-      } else {
-        // Get tokens for selected users
+      } else if (selectedRecipient === 'custom') {
         const selectedUserObjects = users.filter((user) => {
           const userId = user.id || user.userId || '';
           return selectedUsers.includes(userId);
@@ -128,10 +172,27 @@ const SendNotificationModal = ({
         targetTokens = selectedUserObjects
           .filter((user) => user.token && typeof user.token === 'string')
           .map((user) => user.token as string);
+      } else {
+        // Selected a user group: use that group's tokens
+        const group = userGroups.find(
+          (g) =>
+            g.id === selectedRecipient ||
+            (g.name || '').toLowerCase() === selectedRecipient.toLowerCase() ||
+            (g.metaName || '').toLowerCase() === selectedRecipient.toLowerCase()
+        );
+        if (group?.tokens && Array.isArray(group.tokens)) {
+          targetTokens = group.tokens.filter((t): t is string => typeof t === 'string');
+        }
       }
 
       if (targetTokens.length === 0) {
-        showToast('No valid tokens found for selected users', 'error');
+        const message =
+          selectedRecipient === 'all'
+            ? 'No valid tokens found for selected users'
+            : selectedRecipient === 'custom'
+              ? 'No valid tokens found for selected users'
+              : 'No tokens found for the selected group';
+        showToast(message, 'error');
         return;
       }
 
@@ -342,17 +403,23 @@ const SendNotificationModal = ({
                     </label>
                     <div className="relative">
                       <select
-                        value={recipientOption}
-                        onChange={(e) => setRecipientOption(e.target.value as 'all' | 'custom')}
+                        value={selectedRecipient}
+                        onChange={(e) => setSelectedRecipient(e.target.value)}
                         className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent appearance-none pr-10"
+                        disabled={isLoadingGroups}
                       >
                         <option value="all">All Users</option>
+                        {userGroups.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.name || g.metaName || g.id}
+                          </option>
+                        ))}
                         <option value="custom">Select Users</option>
                       </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
                     </div>
 
-                    {recipientOption === 'custom' && (
+                    {selectedRecipient === 'custom' && (
                       <div className="mt-4 max-h-60 overflow-y-auto border border-gray-200 rounded-xl p-4">
                         {isLoadingUsers ? (
                           <div className="flex items-center justify-center py-8">
