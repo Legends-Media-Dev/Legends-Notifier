@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye, Send, Loader2, X, Calendar, Plus, Pencil, FileText, Users } from 'lucide-react';
+import { Send, Loader2, X, Calendar, Plus, Pencil, FileText, Users } from 'lucide-react';
 import { fetchNotifications, fetchScheduledNotifications, Notification, deleteNotification } from '../lib/api';
 import { formatDate, truncateText } from '../lib/utils';
-import NotificationModal from '../components/NotificationModal';
 import SendNotificationModal from '../components/SendNotificationModal';
 import ScheduleNotificationModal from '../components/ScheduleNotificationModal';
 import EditScheduleModal from '../components/EditScheduleModal';
+import EditNotificationModal from '../components/EditNotificationModal';
 import Toast from '../components/Toast';
 
 type TabType = 'all' | 'scheduled' | 'pending' | 'sent';
@@ -16,13 +16,13 @@ const Dashboard = () => {
   const [scheduledNotifications, setScheduledNotifications] = useState<Notification[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [loading, setLoading] = useState(true);
-  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [notificationToSend, setNotificationToSend] = useState<Notification | null>(null);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isSendModalOpen, setIsSendModalOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isEditScheduleModalOpen, setIsEditScheduleModalOpen] = useState(false);
   const [notificationToEditSchedule, setNotificationToEditSchedule] = useState<Notification | null>(null);
+  const [notificationToEdit, setNotificationToEdit] = useState<Notification | null>(null);
+  const [isEditNotificationModalOpen, setIsEditNotificationModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [toast, setToast] = useState({ isVisible: false, message: '', type: 'success' as 'success' | 'error' | 'info' });
 
@@ -60,11 +60,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleView = (notification: Notification) => {
-    setSelectedNotification(notification);
-    setIsViewModalOpen(true);
-  };
-
   const handleSend = (notification: Notification) => {
     setNotificationToSend(notification);
     setIsSendModalOpen(true);
@@ -90,6 +85,18 @@ const Dashboard = () => {
   };
 
   const handleEditScheduleSuccess = () => {
+    loadNotifications();
+    if (activeTab === 'scheduled') {
+      loadScheduledNotifications();
+    }
+  };
+
+  const handleEditNotification = (notification: Notification) => {
+    setNotificationToEdit(notification);
+    setIsEditNotificationModalOpen(true);
+  };
+
+  const handleEditNotificationSuccess = () => {
     loadNotifications();
     if (activeTab === 'scheduled') {
       loadScheduledNotifications();
@@ -256,7 +263,7 @@ const Dashboard = () => {
                   <button
                     onClick={() => handleDelete(notification)}
                     disabled={deletingId === notification.id}
-                    className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed group"
+                    className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Delete notification"
                   >
                     {deletingId === notification.id ? (
@@ -304,11 +311,11 @@ const Dashboard = () => {
                     </div>
                     <div className="flex flex-col items-end gap-2 flex-shrink-0">
                       <button
-                        onClick={() => handleView(notification)}
+                        onClick={() => handleEditNotification(notification)}
                         className="px-4 py-2 text-apple-blue hover:bg-blue-50 rounded-lg transition-colors font-medium flex items-center gap-2 w-full sm:w-auto"
                       >
-                        <Eye className="w-4 h-4" />
-                        View
+                        <Pencil className="w-4 h-4" />
+                        Edit
                       </button>
                       <button
                         onClick={() => handleSend(notification)}
@@ -325,14 +332,6 @@ const Dashboard = () => {
           )}
         </div>
       </div>
-
-      <NotificationModal
-        notification={selectedNotification}
-        isOpen={isViewModalOpen}
-        onClose={() => setIsViewModalOpen(false)}
-        onResend={() => selectedNotification && handleSend(selectedNotification)}
-        isResending={false}
-      />
 
       <SendNotificationModal
         notification={notificationToSend}
@@ -352,6 +351,16 @@ const Dashboard = () => {
         isOpen={isEditScheduleModalOpen}
         onClose={() => setIsEditScheduleModalOpen(false)}
         onSuccess={handleEditScheduleSuccess}
+      />
+
+      <EditNotificationModal
+        notification={notificationToEdit}
+        isOpen={isEditNotificationModalOpen}
+        onClose={() => {
+          setIsEditNotificationModalOpen(false);
+          setNotificationToEdit(null);
+        }}
+        onSuccess={handleEditNotificationSuccess}
       />
 
       <Toast

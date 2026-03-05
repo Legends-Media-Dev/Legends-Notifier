@@ -4,6 +4,9 @@ import { X, Send, Loader2, ChevronDown, Save } from 'lucide-react';
 import { Notification, User, UserGroup, fetchUsers, fetchUserGroups, executeNotification, updateNotification } from '../lib/api';
 import Toast from './Toast';
 
+/** Set to false to actually send notifications; when true, only logs who would receive. */
+const DRY_RUN = false;
+
 interface SendNotificationModalProps {
   notification: Notification | null;
   isOpen: boolean;
@@ -158,22 +161,21 @@ const SendNotificationModal = ({
 
       // Get target tokens based on selection
       let targetTokens: string[] = [];
-      
+      let targetUsersForLog: { id?: string; userId?: string; email?: string; token?: string }[] = [];
+
       if (selectedRecipient === 'all') {
         const allUsers = await fetchUsers();
-        targetTokens = allUsers
-          .filter((user) => user.token && typeof user.token === 'string')
-          .map((user) => user.token as string);
+        targetUsersForLog = allUsers.filter((user) => user.token && typeof user.token === 'string');
+        targetTokens = targetUsersForLog.map((user) => user.token as string);
       } else if (selectedRecipient === 'custom') {
         const selectedUserObjects = users.filter((user) => {
           const userId = user.id || user.userId || '';
           return selectedUsers.includes(userId);
         });
-        targetTokens = selectedUserObjects
-          .filter((user) => user.token && typeof user.token === 'string')
-          .map((user) => user.token as string);
+        targetUsersForLog = selectedUserObjects.filter((user) => user.token && typeof user.token === 'string');
+        targetTokens = targetUsersForLog.map((user) => user.token as string);
       } else {
-        // Selected a user group: use that group's tokens
+        // Selected a user group: use that group's tokens, or resolve from users if group has none
         const group = userGroups.find(
           (g) =>
             g.id === selectedRecipient ||
@@ -181,7 +183,41 @@ const SendNotificationModal = ({
             (g.metaName || '').toLowerCase() === selectedRecipient.toLowerCase()
         );
         if (group?.tokens && Array.isArray(group.tokens)) {
-          targetTokens = group.tokens.filter((t): t is string => typeof t === 'string');
+          const fromGroup = group.tokens.filter((t): t is string => typeof t === 'string');
+          if (fromGroup.length > 0) {
+            targetTokens = fromGroup;
+          }
+        }
+        // Fallback: if group has no tokens (e.g. backend doesn't populate them), get tokens from users in this group
+        if (targetTokens.length === 0 && group) {
+          const allUsersForGroup = await fetchUsers();
+          const groupIdLower = (group.id ?? '').toLowerCase();
+          const groupNameLower = (group.name ?? '').toLowerCase();
+          const groupMetaLower = (group.metaName ?? '').toLowerCase();
+          const userInGroup = (u: User) => {
+            const g = (u.groups ?? (u as Record<string, unknown>).group ?? (u as Record<string, unknown>).userGroups) as string[] | { id?: string; name?: string }[] | undefined;
+            if (!g || !Array.isArray(g)) return false;
+            return g.some((item) => {
+              const name = typeof item === 'string' ? item : (item?.name ?? (item as { id?: string }).id ?? '');
+              const nameLower = String(name).toLowerCase();
+              return nameLower === groupIdLower || nameLower === groupNameLower || nameLower === groupMetaLower;
+            });
+          };
+          targetUsersForLog = allUsersForGroup.filter((u) => userInGroup(u) && u.token && typeof u.token === 'string');
+          targetTokens = targetUsersForLog.map((u) => u.token as string);
+
+          // Debug: when still no tokens, log why so you can fix backend or data
+          if (targetTokens.length === 0) {
+            console.warn('[Send Notification] No tokens for group – debug info:', {
+              selectedGroup: { id: group.id, name: group.name, metaName: group.metaName },
+              totalUsersFromApi: allUsersForGroup.length,
+              usersWithTokens: allUsersForGroup.filter((u) => u.token && typeof u.token === 'string').length,
+              sampleUserGroups: allUsersForGroup.slice(0, 5).map((u) => ({
+                email: u.email,
+                groups: (u as Record<string, unknown>).groups ?? (u as Record<string, unknown>).group ?? (u as Record<string, unknown>).userGroups,
+              })),
+            });
+          }
         }
       }
 
@@ -246,9 +282,31 @@ const SendNotificationModal = ({
         payload.data = JSON.parse(jsonData);
       }
 
-      await executeNotification(payload);
-      
-      showToast('Notification sent successfully!', 'success');
+      // DEBUG: Log who would receive the notification instead of sending
+      const group = selectedRecipient !== 'all' && selectedRecipient !== 'custom'
+        ? userGroups.find(
+            (g) =>
+              g.id === selectedRecipient ||
+              (g.name || '').toLowerCase() === selectedRecipient.toLowerCase() ||
+              (g.metaName || '').toLowerCase() === selectedRecipient.toLowerCase()
+          )
+        : null;
+      console.log('[Send Notification - DRY RUN] Users who would receive the notification:', {
+        recipientType: selectedRecipient === 'all' ? 'All Users' : selectedRecipient === 'custom' ? 'Custom (selected users)' : `Group: ${group?.name ?? group?.metaName ?? selectedRecipient}`,
+        count: targetTokens.length,
+        users: targetUsersForLog.length
+          ? targetUsersForLog.map((u) => ({ id: u.id ?? u.userId, email: u.email }))
+          : '(group: user list not available, tokens only)',
+        tokenCount: targetTokens.length,
+        payload: { title: payload.title, body: payload.body, data: payload.data, notificationId: payload.notificationId },
+      });
+
+      if (!DRY_RUN) {
+        await executeNotification(payload);
+        showToast('Notification sent successfully!', 'success');
+      } else {
+        showToast('Dry run: see console for users who would receive the notification', 'success');
+      }
       
       // Close modal after a short delay to show success message
       setTimeout(() => {
@@ -352,6 +410,14 @@ const SendNotificationModal = ({
                   </button>
                 </div>
 
+                {isLoadingGroups ? (
+                  <div className="flex flex-col items-center justify-center py-20 px-6">
+                    <Loader2 className="w-12 h-12 text-apple-blue animate-spin mb-4" />
+                    <p className="text-gray-600 font-medium">Loading notification and recipients...</p>
+                    <p className="text-gray-400 text-sm mt-1">Setting the right group for you</p>
+                  </div>
+                ) : (
+                <>
                 <div className="px-6 py-6 space-y-6">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -510,6 +576,8 @@ const SendNotificationModal = ({
                     </button>
                   </div>
                 </div>
+                </>
+                )}
               </div>
             </motion.div>
           </>
