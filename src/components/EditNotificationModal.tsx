@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Save, Loader2 } from 'lucide-react';
-import { Notification, updateNotification } from '../lib/api';
+import { Notification, updateNotification, UpdateNotificationPayload } from '../lib/api';
 import Toast from './Toast';
 
 interface EditNotificationModalProps {
@@ -71,17 +71,12 @@ const EditNotificationModal = ({
     try {
       setIsSaving(true);
 
-      const updatePayload: Record<string, unknown> = {
+      const updatePayload: UpdateNotificationPayload = {
         notificationId: notification.id,
         title: title.trim(),
         body: body.trim(),
+        data: jsonData.trim() ? JSON.parse(jsonData) : {},
       };
-
-      if (jsonData.trim()) {
-        updatePayload.data = JSON.parse(jsonData);
-      } else {
-        updatePayload.data = {};
-      }
 
       await updateNotification(updatePayload);
 
