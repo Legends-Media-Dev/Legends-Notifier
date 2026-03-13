@@ -458,3 +458,130 @@ export const fetchSegmentUsers = async (segmentId: string): Promise<User[]> => {
   }
 };
 
+// Shop collections: use same backend as other handlers to avoid CORS (backend can proxy to Shopify/Cloud Function)
+export interface ShopCollection {
+  id: string;
+  title: string;
+  handle: string;
+  description?: string;
+  image?: { src: string } | null;
+}
+
+export const fetchCollections = async (): Promise<ShopCollection[]> => {
+  try {
+    const response = await api.get<ShopCollection[] | { collections: ShopCollection[] }>('/fetchCollectionsHandler');
+    const data = response.data;
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object' && Array.isArray((data as any).collections)) return (data as any).collections;
+    console.warn('Unexpected response format from fetchCollectionsHandler:', data);
+    return [];
+  } catch (error) {
+    console.error('Error fetching collections:', error);
+    throw error;
+  }
+};
+
+// App collections config from Firestore – response shape from fetchAppCollectionsInfoHandler
+//
+// Response: { collections: [ { id, COLLECTION_MAP, ORDER, DISPLAY_NAMES, updatedAt } ], total }
+// - COLLECTION_MAP: { [key]: handle } (stable key → Shopify handle)
+// - ORDER: string[] – keys in display order (only these are shown; keys in MAP but not in ORDER are omitted)
+// - DISPLAY_NAMES: { [key]: label } – optional; UI uses DISPLAY_NAMES[key] || key
+export interface AppCollectionsDoc {
+  id: string;
+  COLLECTION_MAP?: Record<string, string> | Array<Record<string, string>>;
+  ORDER?: string[];
+  DISPLAY_NAMES?: Record<string, string>;
+  updatedAt?: string;
+}
+
+export interface AppCollectionsResponse {
+  collections: AppCollectionsDoc[];
+  total: number;
+}
+
+function collectionMapToRecord(map: AppCollectionsDoc['COLLECTION_MAP']): Record<string, string> {
+  if (map == null) return {};
+  if (Array.isArray(map)) {
+    const record: Record<string, string> = {};
+    for (const obj of map) {
+      if (obj && typeof obj === 'object') {
+        for (const [displayName, handle] of Object.entries(obj)) {
+          if (typeof handle === 'string' && handle.trim()) record[displayName.trim()] = handle.trim();
+        }
+      }
+    }
+    return record;
+  }
+  if (typeof map === 'object') {
+    return Object.fromEntries(
+      Object.entries(map)
+        .filter(([, handle]) => typeof handle === 'string' && (handle as string).trim())
+        .map(([displayName, handle]) => [displayName.trim(), (handle as string).trim()])
+    );
+  }
+  return {};
+}
+
+/**
+ * Flatten API response into ordered list for the UI.
+ * Only keys present in ORDER are included (keys in COLLECTION_MAP but not in ORDER are omitted).
+ * displayName = DISPLAY_NAMES[key] ?? key.
+ */
+export function flattenCollectionMap(docs: AppCollectionsDoc[]): Array<{ key: string; handle: string; displayName: string }> {
+  const out: Array<{ key: string; handle: string; displayName: string }> = [];
+  for (const doc of docs) {
+    const record = collectionMapToRecord(doc.COLLECTION_MAP);
+    const displayNames = doc.DISPLAY_NAMES && typeof doc.DISPLAY_NAMES === 'object' ? doc.DISPLAY_NAMES : {};
+    const order = doc.ORDER && Array.isArray(doc.ORDER) ? doc.ORDER : Object.keys(record);
+    for (const key of order) {
+      const handle = record[key];
+      if (handle) {
+        out.push({ key: key.trim(), handle, displayName: (displayNames[key] ?? key).trim() });
+      }
+    }
+  }
+  return out;
+}
+
+export const fetchAppCollectionsInfo = async (): Promise<AppCollectionsResponse> => {
+  try {
+    const response = await api.get<AppCollectionsResponse>('/fetchAppCollectionsInfoHandler');
+    const data = response.data;
+    if (data && typeof data === 'object' && Array.isArray(data.collections)) {
+      return { collections: data.collections, total: data.total ?? data.collections.length };
+    }
+    console.warn('Unexpected response format from fetchAppCollectionsInfoHandler:', data);
+    return { collections: [], total: 0 };
+  } catch (error) {
+    console.error('Error fetching app collections info:', error);
+    throw error;
+  }
+};
+
+// Push app collections to Firestore (create or update)
+export interface PushAppCollectionsPayload {
+  docId?: string;
+  id?: string;
+  COLLECTION_MAP: Record<string, string>;
+  /** Keys in the desired display order. */
+  ORDER?: string[];
+  /** Optional display name overrides; keys must exist in COLLECTION_MAP. Omit or {} to use key as label. */
+  DISPLAY_NAMES?: Record<string, string>;
+}
+
+export interface PushAppCollectionsResponse {
+  id: string;
+  created: boolean;
+}
+
+export const pushAppCollectionsInfo = async (payload: PushAppCollectionsPayload): Promise<PushAppCollectionsResponse> => {
+  try {
+    const response = await api.post<PushAppCollectionsResponse>('/pushAppCollectionsInfoHandler', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error pushing app collections:', error);
+    throw error;
+  }
+};
+

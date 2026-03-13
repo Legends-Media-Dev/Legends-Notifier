@@ -8,6 +8,7 @@ import Users from './pages/Users';
 import Segments from './pages/Segments';
 import Giveaway from './pages/Giveaway';
 import NewNotification from './pages/NewNotification';
+import ShopCollections from './pages/ShopCollections';
 
 function App() {
   return (
@@ -19,15 +20,16 @@ function App() {
             path="/*"
             element={
               <ProtectedRoute>
-                <div className="min-h-screen flex bg-gray-50">
+                <div className="h-screen flex bg-gray-50 overflow-hidden">
                   <Navbar />
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 min-h-0 overflow-y-auto">
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/users" element={<Users />} />
                       <Route path="/segments" element={<Segments />} />
                       <Route path="/giveaway" element={<Giveaway />} />
                       <Route path="/new-notification" element={<NewNotification />} />
+                      <Route path="/app-settings/shop-collections" element={<ShopCollections />} />
                     </Routes>
                   </div>
                 </div>

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, LogOut, LayoutDashboard, Users as UsersIcon, Plus, ChevronDown, User, FolderTree, Gift } from 'lucide-react';
+import { Bell, LogOut, LayoutDashboard, Users as UsersIcon, Plus, ChevronDown, User, FolderTree, Gift, Settings, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const Navbar = () => {
@@ -8,7 +8,15 @@ const Navbar = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const isAudienceActive = location.pathname === '/users' || location.pathname === '/segments';
-  const [isAudienceOpen, setIsAudienceOpen] = useState(isAudienceActive);
+  const isAppSettingsActive = location.pathname.startsWith('/app-settings');
+  const [openDropdown, setOpenDropdown] = useState<string | null>(() =>
+    isAudienceActive ? 'Audience' : isAppSettingsActive ? 'App Settings' : null
+  );
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/app-settings')) setOpenDropdown('App Settings');
+    else if (location.pathname === '/users' || location.pathname === '/segments') setOpenDropdown('Audience');
+  }, [location.pathname]);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -25,21 +33,29 @@ const Navbar = () => {
 
   const navItems: NavItem[] = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { 
-      label: 'Audience', 
+    {
+      label: 'Audience',
       icon: UsersIcon,
       isDropdown: true,
       subItems: [
         { path: '/users', label: 'Users', icon: User },
         { path: '/segments', label: 'Segments', icon: FolderTree },
-      ]
+      ],
+    },
+    {
+      label: 'App Settings',
+      icon: Settings,
+      isDropdown: true,
+      subItems: [
+        { path: '/app-settings/shop-collections', label: 'Shop Collections', icon: ShoppingBag },
+      ],
     },
     { path: '/giveaway', label: 'Giveaway', icon: Gift },
     { path: '/new-notification', label: 'New Notification', icon: Plus },
   ];
 
   return (
-    <nav className="w-64 flex-shrink-0 bg-gray-900 min-h-screen flex flex-col">
+    <nav className="w-64 flex-shrink-0 h-screen bg-gray-900 flex flex-col">
       <div className="p-6 flex flex-col flex-1">
         <Link to="/" className="flex items-center gap-3 mb-8">
           <div className="bg-apple-blue rounded-xl p-2">
@@ -53,12 +69,14 @@ const Navbar = () => {
             const Icon = item.icon;
             
             if (item.isDropdown && 'subItems' in item) {
+              const isOpen = openDropdown === item.label;
+              const isSectionActive = item.label === 'Audience' ? isAudienceActive : item.label === 'App Settings' ? isAppSettingsActive : false;
               return (
                 <div key={item.label}>
                   <button
-                    onClick={() => setIsAudienceOpen(!isAudienceOpen)}
+                    onClick={() => setOpenDropdown(isOpen ? null : item.label)}
                     className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-md font-medium text-sm transition-colors ${
-                      isAudienceActive
+                      isSectionActive
                         ? 'bg-gray-800 text-white'
                         : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                     }`}
@@ -67,11 +85,11 @@ const Navbar = () => {
                       <Icon className="w-5 h-5" />
                       {item.label}
                     </div>
-                    <ChevronDown 
-                      className={`w-4 h-4 transition-transform ${isAudienceOpen ? 'rotate-180' : ''}`} 
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
                     />
                   </button>
-                  {isAudienceOpen && (
+                  {isOpen && (
                     <div className="ml-4 mt-1 space-y-1 border-l border-gray-700 pl-4">
                       {item.subItems.map((subItem) => {
                         const SubIcon = subItem.icon;
