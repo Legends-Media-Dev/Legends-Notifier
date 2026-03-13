@@ -9,6 +9,8 @@ import Segments from './pages/Segments';
 import Giveaway from './pages/Giveaway';
 import NewNotification from './pages/NewNotification';
 import ShopCollections from './pages/ShopCollections';
+import GiveawaySnippet from './pages/GiveawaySnippet';
+import CategorySnippet from './pages/CategorySnippet';
 
 function App() {
   return (
@@ -30,6 +32,8 @@ function App() {
                       <Route path="/giveaway" element={<Giveaway />} />
                       <Route path="/new-notification" element={<NewNotification />} />
                       <Route path="/app-settings/shop-collections" element={<ShopCollections />} />
+                      <Route path="/app-settings/home/giveaway-snippet" element={<GiveawaySnippet />} />
+                      <Route path="/app-settings/home/category-snippet" element={<CategorySnippet />} />
                     </Routes>
                   </div>
                 </div>

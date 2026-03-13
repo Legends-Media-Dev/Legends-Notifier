@@ -585,3 +585,113 @@ export const pushAppCollectionsInfo = async (payload: PushAppCollectionsPayload)
   }
 };
 
+// Giveaway Comp (home snippet) – fetch/push via Cloud Functions
+const GIVEAWAY_COMP_FETCH_URL = 'https://us-central1-premier-ikon.cloudfunctions.net/fetchGiveawayCompInfoHandler';
+const GIVEAWAY_COMP_PUSH_URL = 'https://us-central1-premier-ikon.cloudfunctions.net/pushGiveawayCompInfoHandler';
+
+export interface GiveawayCompItem {
+  id: string;
+  badgeLabel?: string;
+  title?: string;
+  header?: string;
+  buttonText?: string;
+  imageLink?: string;
+  updatedAt?: string;
+}
+
+export interface FetchGiveawayCompResponse {
+  items: GiveawayCompItem[];
+  total: number;
+}
+
+export interface PushGiveawayCompPayload {
+  docId?: string;
+  badgeLabel?: string;
+  title?: string;
+  header?: string;
+  buttonText?: string;
+  imageLink?: string;
+}
+
+export interface PushGiveawayCompResponse {
+  id: string;
+  created: boolean;
+}
+
+export const fetchGiveawayCompInfo = async (docId?: string): Promise<FetchGiveawayCompResponse> => {
+  try {
+    const url = docId
+      ? `${GIVEAWAY_COMP_FETCH_URL}?docId=${encodeURIComponent(docId)}`
+      : GIVEAWAY_COMP_FETCH_URL;
+    const response = await axios.get<FetchGiveawayCompResponse>(url);
+    const data = response.data;
+    if (data && typeof data === 'object' && Array.isArray(data.items)) {
+      return { items: data.items, total: data.total ?? data.items.length };
+    }
+    return { items: [], total: 0 };
+  } catch (error) {
+    console.error('Error fetching giveaway comp info:', error);
+    throw error;
+  }
+};
+
+export const pushGiveawayCompInfo = async (payload: PushGiveawayCompPayload): Promise<PushGiveawayCompResponse> => {
+  const response = await axios.post<PushGiveawayCompResponse>(GIVEAWAY_COMP_PUSH_URL, payload, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return response.data;
+};
+
+// Category Snippet / Category Grid Comp (home) – section title + ordered collections (even count required)
+const CATEGORY_GRID_FETCH_URL = 'https://us-central1-premier-ikon.cloudfunctions.net/fetchCategoryGridCompInfoHandler';
+const CATEGORY_GRID_PUSH_URL = 'https://us-central1-premier-ikon.cloudfunctions.net/pushCategoryGridCompInfoHandler';
+
+export interface CategorySnippetDoc {
+  id: string;
+  sectionTitle?: string;
+  COLLECTION_MAP?: Record<string, string>;
+  ORDER?: string[];
+  DISPLAY_NAMES?: Record<string, string>;
+  updatedAt?: string;
+}
+
+export interface FetchCategorySnippetResponse {
+  items: CategorySnippetDoc[];
+  total: number;
+}
+
+export interface PushCategorySnippetPayload {
+  docId?: string;
+  id?: string;
+  sectionTitle?: string;
+  COLLECTION_MAP?: Record<string, string>;
+  ORDER?: string[];
+  DISPLAY_NAMES?: Record<string, string>;
+}
+
+export interface PushCategorySnippetResponse {
+  id: string;
+  created: boolean;
+}
+
+export const fetchCategorySnippetInfo = async (): Promise<FetchCategorySnippetResponse> => {
+  try {
+    const response = await axios.get<FetchCategorySnippetResponse>(CATEGORY_GRID_FETCH_URL);
+    const data = response.data;
+    if (data && typeof data === 'object' && Array.isArray(data.items)) {
+      return { items: data.items, total: data.total ?? data.items.length };
+    }
+    return { items: [], total: 0 };
+  } catch (error) {
+    console.error('Error fetching category grid comp info:', error);
+    throw error;
+  }
+};
+
+export const pushCategorySnippetInfo = async (payload: PushCategorySnippetPayload): Promise<PushCategorySnippetResponse> => {
+  const response = await axios.post<PushCategorySnippetResponse>(CATEGORY_GRID_PUSH_URL, payload, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return response.data;
+};
+
