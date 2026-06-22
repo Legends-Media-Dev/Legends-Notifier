@@ -30,7 +30,7 @@ const Toast = ({ message, type = 'success', isVisible, onClose, duration = 3000 
   const colors = {
     success: 'bg-green-500',
     error: 'bg-red-500',
-    info: 'bg-apple-blue',
+    info: 'bg-accent',
   };
 
   const Icon = icons[type];

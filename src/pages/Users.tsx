@@ -2,10 +2,14 @@ import { useState, useEffect, useMemo } from 'react';
 import { Search, Loader2, Smartphone, Calendar, User as UserIcon, Mail, Monitor, Users as UsersGroupIcon } from 'lucide-react';
 import { fetchUsers, User } from '../lib/api';
 import { formatDate } from '../lib/utils';
+import PageLayout from '../components/PageLayout';
+import EmptyState from '../components/EmptyState';
 
 const Users = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -14,25 +18,23 @@ const Users = () => {
 
   const loadUsers = async () => {
     try {
-      setLoading(true);
+      if (hasLoadedOnce) setIsRefreshing(true);
+      else setLoading(true);
       const data = await fetchUsers();
       setUsers(Array.isArray(data) ? data : []);
+      setHasLoadedOnce(true);
     } catch (error) {
       console.error('Failed to load users:', error);
       setUsers([]);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   const filteredUsers = useMemo(() => {
-    // Ensure users is always an array
     const usersArray = Array.isArray(users) ? users : [];
-
-    // Filter out any invalid users (null, undefined)
-    const validUsers = usersArray.filter(
-      (user) => user && typeof user === 'object'
-    );
+    const validUsers = usersArray.filter((user) => user && typeof user === 'object');
 
     if (!searchQuery.trim()) return validUsers;
 
@@ -48,7 +50,6 @@ const Users = () => {
     );
   }, [users, searchQuery]);
 
-  // Groups come from each user object in the fetchUsers response
   const getGroupsForUser = (user: User): string[] => {
     const u = user as Record<string, unknown>;
     const g = (u.groups ?? u.group ?? u.userGroups) as string[] | { id?: string; name?: string }[] | undefined;
@@ -58,164 +59,154 @@ const Users = () => {
       .filter(Boolean) as string[];
   };
 
+  const userCount = Array.isArray(users) ? users.length : 0;
+
   return (
-    <div className="min-h-screen pb-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Users</h1>
-          <p className="mt-2 text-gray-600">View all registered devices and users</p>
-        </div>
-
-        <div className="mb-6">
-          <div className="inline-flex items-center gap-3 px-5 py-4 bg-white border border-gray-200 rounded-xl">
-            <div className="w-12 h-12 rounded-xl bg-apple-blue/10 flex items-center justify-center">
-              <UserIcon className="w-6 h-6 text-apple-blue" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Push notifications enabled</p>
-              <p className="text-2xl font-bold text-gray-900 tabular-nums">
-                {loading ? '—' : (Array.isArray(users) ? users.length : 0).toLocaleString()}
-              </p>
-            </div>
+    <PageLayout
+      title="Users"
+      description="View all registered devices and push notification subscribers"
+    >
+      <div className="mb-6">
+        <div className="inline-flex items-center gap-3 px-5 py-4 page-card">
+          <div className="section-icon">
+            <UserIcon className="w-5 h-5 text-accent" />
           </div>
-        </div>
-
-        <div className="mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search by email, device, platform, or token..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent"
-            />
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 text-apple-blue animate-spin" />
-          </div>
-        ) : filteredUsers.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-            <p className="text-gray-500 text-lg">
-              {searchQuery ? 'No users found matching your search' : 'No users found'}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Push enabled</p>
+            <p className="text-2xl font-bold text-ink tabular-nums">
+              {loading ? '—' : userCount.toLocaleString()}
             </p>
           </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Email / User ID
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Device
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Platform
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Expo Token
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Groups
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Last Updated
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredUsers.map((user, index) => (
-                    <tr key={user.id || user.userId || `user-${index}`} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col gap-1">
-                          {user.email && (
-                            <div className="flex items-center gap-2">
-                              <Mail className="w-4 h-4 text-gray-400" />
-                              <span className="text-gray-900 font-medium">{user.email}</span>
-                            </div>
-                          )}
-                          {user.userId && (
-                            <div className="flex items-center gap-2">
-                              <UserIcon className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm text-gray-500">ID: {user.userId}</span>
-                            </div>
-                          )}
-                          {!user.email && !user.userId && <span className="text-gray-400">N/A</span>}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
-                            <Smartphone className="w-4 h-4 text-gray-400" />
-                            <span className="text-gray-900 font-medium">{user.modelName || 'N/A'}</span>
-                          </div>
-                          {user.brand && (
-                            <span className="text-sm text-gray-500 ml-6">{user.brand}</span>
-                          )}
-                          {user.osVersion && (
-                            <span className="text-xs text-gray-400 ml-6">OS: {user.osVersion}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <Monitor className="w-4 h-4 text-gray-400" />
-                          <span className="text-gray-700 capitalize">{user.platform || 'N/A'}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <code className="text-sm text-gray-600 bg-gray-50 px-2 py-1 rounded font-mono">
-                          {truncateToken(user.token)}
-                        </code>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-wrap gap-1.5">
-                          {getGroupsForUser(user).length === 0 ? (
-                            <span className="text-gray-400 text-sm">—</span>
-                          ) : (
-                            getGroupsForUser(user).map((groupName) => (
-                              <span
-                                key={groupName}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-apple-blue/10 text-apple-blue text-xs font-medium"
-                              >
-                                <UsersGroupIcon className="w-3 h-3" />
-                                {groupName}
-                              </span>
-                            ))
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-gray-400" />
-                          <span className="text-gray-700">
-                            {user.updatedAt ? formatDate(user.updatedAt) : 'N/A'}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
-    </div>
+
+      <div className="mb-6">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search by email, device, platform, or token..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="input-field pl-10 w-full"
+          />
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="w-8 h-8 text-accent animate-spin" />
+        </div>
+      ) : filteredUsers.length === 0 ? (
+        <EmptyState
+          icon={<UserIcon className="w-7 h-7" />}
+          title={searchQuery ? 'No matching users' : 'No users found'}
+          description={
+            searchQuery
+              ? 'Try a different search term.'
+              : 'Registered devices will appear here once users enable push notifications.'
+          }
+        />
+      ) : (
+        <div className="table-shell relative">
+          {isRefreshing && (
+            <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] z-10 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-accent animate-spin" />
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px]">
+              <thead>
+                <tr>
+                  <th>Email / User ID</th>
+                  <th>Device</th>
+                  <th>Platform</th>
+                  <th>Expo Token</th>
+                  <th>Groups</th>
+                  <th>Last Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.map((user, index) => (
+                  <tr key={user.id || user.userId || `user-${index}`}>
+                    <td className="whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        {user.email && (
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm font-medium text-ink">{user.email}</span>
+                          </div>
+                        )}
+                        {user.userId && (
+                          <div className="flex items-center gap-2">
+                            <UserIcon className="w-4 h-4 text-gray-400" />
+                            <span className="text-xs text-gray-500">ID: {user.userId}</span>
+                          </div>
+                        )}
+                        {!user.email && !user.userId && <span className="text-gray-400 text-sm">—</span>}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm font-medium text-ink">{user.modelName || '—'}</span>
+                        </div>
+                        {user.brand && <span className="text-xs text-gray-500 ml-6">{user.brand}</span>}
+                        {user.osVersion && <span className="text-xs text-gray-400 ml-6">OS: {user.osVersion}</span>}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <Monitor className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-700 capitalize">{user.platform || '—'}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <code className="text-xs text-gray-600 bg-surface-muted px-2 py-1 rounded-lg font-mono">
+                        {truncateToken(user.token)}
+                      </code>
+                    </td>
+                    <td>
+                      <div className="flex flex-wrap gap-1.5">
+                        {getGroupsForUser(user).length === 0 ? (
+                          <span className="text-gray-300 text-sm">—</span>
+                        ) : (
+                          getGroupsForUser(user).map((groupName) => (
+                            <span
+                              key={groupName}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent-light text-accent text-xs font-medium"
+                            >
+                              <UsersGroupIcon className="w-3 h-3" />
+                              {groupName}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-600">
+                          {user.updatedAt ? formatDate(user.updatedAt) : '—'}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </PageLayout>
   );
 };
 
 const truncateToken = (token: string | undefined | null, maxLength: number = 30): string => {
-  if (!token || typeof token !== 'string') return 'N/A';
+  if (!token || typeof token !== 'string') return '—';
   if (token.length <= maxLength) return token;
   return token.slice(0, maxLength) + '...';
 };
 
 export default Users;
-

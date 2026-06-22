@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, Loader2, ChevronDown, Save } from 'lucide-react';
-import { Notification, User, UserGroup, fetchUsers, fetchUserGroups, executeNotification, updateNotification } from '../lib/api';
+import { Send, Loader2, Users, AlertCircle } from 'lucide-react';
+import { Notification, executeNotification } from '../lib/api';
+import { formatUserGroup } from '../lib/notificationUtils';
+import { resolveAudienceTokens } from '../lib/audienceUtils';
+import LoadingButton from './LoadingButton';
+import ModalBusyOverlay from './ModalBusyOverlay';
 import Toast from './Toast';
-
-/** Set to false to actually send notifications; when true, only logs who would receive. */
-const DRY_RUN = false;
 
 interface SendNotificationModalProps {
   notification: Notification | null;
@@ -20,361 +21,65 @@ const SendNotificationModal = ({
   onClose,
   onSuccess,
 }: SendNotificationModalProps) => {
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [jsonData, setJsonData] = useState('');
-  const [jsonError, setJsonError] = useState('');
-  // 'all' = All Users, 'custom' = Select Users, otherwise = group id
-  const [selectedRecipient, setSelectedRecipient] = useState<string>('all');
-  const [userGroups, setUserGroups] = useState<UserGroup[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
-  const [isLoadingGroups, setIsLoadingGroups] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [recipientCount, setRecipientCount] = useState<number | null>(null);
+  const [loadingCount, setLoadingCount] = useState(false);
   const [toast, setToast] = useState({ isVisible: false, message: '', type: 'success' as 'success' | 'error' | 'info' });
-  
-  // Track original values to detect if notification was edited
-  const [originalTitle, setOriginalTitle] = useState('');
-  const [originalBody, setOriginalBody] = useState('');
-  const [originalData, setOriginalData] = useState('');
 
   useEffect(() => {
-    if (isOpen) {
-      loadUserGroups();
+    if (isOpen && notification) {
+      setLoadingCount(true);
+      setRecipientCount(null);
+      resolveAudienceTokens(notification.userGroup || 'allUsers')
+        .then((tokens) => setRecipientCount(tokens.length))
+        .catch(() => setRecipientCount(0))
+        .finally(() => setLoadingCount(false));
     }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (notification && isOpen) {
-      const initialTitle = notification.title || '';
-      const initialBody = notification.body || '';
-      const initialData = notification.data ? JSON.stringify(notification.data, null, 2) : '';
-      
-      setTitle(initialTitle);
-      setBody(initialBody);
-      setJsonData(initialData);
-      setOriginalTitle(initialTitle);
-      setOriginalBody(initialBody);
-      setOriginalData(initialData);
-      setJsonError('');
-      setSelectedUsers([]);
-
-      // Pre-select the notification's user group when opening
-      const ug = (notification.userGroup || '').trim().toLowerCase();
-      if (!ug || ug === 'allusers' || ug === 'all') {
-        setSelectedRecipient('all');
-      } else {
-        // Match by group id, name, or metaName (will be set after groups load if needed)
-        setSelectedRecipient(notification.userGroup ?? 'all');
-      }
-    }
-  }, [notification, isOpen]);
-
-  useEffect(() => {
-    // After groups load, normalize selectedRecipient to a group id so the dropdown shows the right option
-    if (!notification || !isOpen || userGroups.length === 0) return;
-    const ug = (notification.userGroup || '').trim();
-    if (!ug || ug.toLowerCase() === 'allusers' || ug.toLowerCase() === 'all') return;
-    const matched = userGroups.find(
-      (g) =>
-        g.id === ug ||
-        (g.name || '').toLowerCase() === ug.toLowerCase() ||
-        (g.metaName || '').toLowerCase() === ug.toLowerCase()
-    );
-    if (matched && selectedRecipient !== matched.id) {
-      setSelectedRecipient(matched.id);
-    }
-  }, [notification, isOpen, userGroups, selectedRecipient]);
-
-  const loadUserGroups = async () => {
-    try {
-      setIsLoadingGroups(true);
-      const data = await fetchUserGroups();
-      setUserGroups(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Failed to load user groups:', error);
-      setUserGroups([]);
-    } finally {
-      setIsLoadingGroups(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isOpen && selectedRecipient === 'custom') {
-      loadUsers();
-    }
-  }, [isOpen, selectedRecipient]);
-
-  const loadUsers = async () => {
-    try {
-      setIsLoadingUsers(true);
-      const data = await fetchUsers();
-      setUsers(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Failed to load users:', error);
-      showToast('Failed to load users', 'error');
-    } finally {
-      setIsLoadingUsers(false);
-    }
-  };
-
-  const validateJson = (jsonString: string): boolean => {
-    if (!jsonString.trim()) return true;
-    try {
-      JSON.parse(jsonString);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const handleJsonChange = (value: string) => {
-    setJsonData(value);
-    if (value.trim() && !validateJson(value)) {
-      setJsonError('Invalid JSON format');
-    } else {
-      setJsonError('');
-    }
-  };
-
-  const handleUserToggle = (userId: string) => {
-    setSelectedUsers((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    );
-  };
-
-  const handleSend = async () => {
-    if (jsonError) {
-      showToast('Please fix JSON errors before sending', 'error');
-      return;
-    }
-
-    if (!title.trim() || !body.trim()) {
-      showToast('Title and body are required', 'error');
-      return;
-    }
-
-    try {
-      setIsSending(true);
-
-      // Get target tokens based on selection
-      let targetTokens: string[] = [];
-      let targetUsersForLog: { id?: string; userId?: string; email?: string; token?: string }[] = [];
-
-      if (selectedRecipient === 'all') {
-        const allUsers = await fetchUsers();
-        targetUsersForLog = allUsers.filter((user) => user.token && typeof user.token === 'string');
-        targetTokens = targetUsersForLog.map((user) => user.token as string);
-      } else if (selectedRecipient === 'custom') {
-        const selectedUserObjects = users.filter((user) => {
-          const userId = user.id || user.userId || '';
-          return selectedUsers.includes(userId);
-        });
-        targetUsersForLog = selectedUserObjects.filter((user) => user.token && typeof user.token === 'string');
-        targetTokens = targetUsersForLog.map((user) => user.token as string);
-      } else {
-        // Selected a user group: use that group's tokens, or resolve from users if group has none
-        const group = userGroups.find(
-          (g) =>
-            g.id === selectedRecipient ||
-            (g.name || '').toLowerCase() === selectedRecipient.toLowerCase() ||
-            (g.metaName || '').toLowerCase() === selectedRecipient.toLowerCase()
-        );
-        if (group?.tokens && Array.isArray(group.tokens)) {
-          const fromGroup = group.tokens.filter((t): t is string => typeof t === 'string');
-          if (fromGroup.length > 0) {
-            targetTokens = fromGroup;
-          }
-        }
-        // Fallback: if group has no tokens (e.g. backend doesn't populate them), get tokens from users in this group
-        if (targetTokens.length === 0 && group) {
-          const allUsersForGroup = await fetchUsers();
-          const groupIdLower = (group.id ?? '').toLowerCase();
-          const groupNameLower = (group.name ?? '').toLowerCase();
-          const groupMetaLower = (group.metaName ?? '').toLowerCase();
-          const userInGroup = (u: User) => {
-            const g = (u.groups ?? (u as Record<string, unknown>).group ?? (u as Record<string, unknown>).userGroups) as string[] | { id?: string; name?: string }[] | undefined;
-            if (!g || !Array.isArray(g)) return false;
-            return g.some((item) => {
-              const name = typeof item === 'string' ? item : (item?.name ?? (item as { id?: string }).id ?? '');
-              const nameLower = String(name).toLowerCase();
-              return nameLower === groupIdLower || nameLower === groupNameLower || nameLower === groupMetaLower;
-            });
-          };
-          targetUsersForLog = allUsersForGroup.filter((u) => userInGroup(u) && u.token && typeof u.token === 'string');
-          targetTokens = targetUsersForLog.map((u) => u.token as string);
-
-          // Debug: when still no tokens, log why so you can fix backend or data
-          if (targetTokens.length === 0) {
-            console.warn('[Send Notification] No tokens for group – debug info:', {
-              selectedGroup: { id: group.id, name: group.name, metaName: group.metaName },
-              totalUsersFromApi: allUsersForGroup.length,
-              usersWithTokens: allUsersForGroup.filter((u) => u.token && typeof u.token === 'string').length,
-              sampleUserGroups: allUsersForGroup.slice(0, 5).map((u) => ({
-                email: u.email,
-                groups: (u as Record<string, unknown>).groups ?? (u as Record<string, unknown>).group ?? (u as Record<string, unknown>).userGroups,
-              })),
-            });
-          }
-        }
-      }
-
-      if (targetTokens.length === 0) {
-        const message =
-          selectedRecipient === 'all'
-            ? 'No valid tokens found for selected users'
-            : selectedRecipient === 'custom'
-              ? 'No valid tokens found for selected users'
-              : 'No tokens found for the selected group';
-        showToast(message, 'error');
-        return;
-      }
-
-      // Check if notification was edited
-      const titleChanged = title.trim() !== originalTitle;
-      const bodyChanged = body.trim() !== originalBody;
-      const dataChanged = jsonData.trim() !== originalData;
-      const wasEdited = titleChanged || bodyChanged || dataChanged;
-
-      // If notification was edited and we have a notificationId, update it first
-      if (wasEdited && notification?.id) {
-        try {
-          const updatePayload: any = {
-            notificationId: notification.id,
-          };
-
-          if (titleChanged) {
-            updatePayload.title = title.trim();
-          }
-          if (bodyChanged) {
-            updatePayload.body = body.trim();
-          }
-          if (dataChanged) {
-            updatePayload.data = jsonData.trim() ? JSON.parse(jsonData) : {};
-          }
-
-          await updateNotification(updatePayload);
-        } catch (error) {
-          console.error('Error updating notification:', error);
-          // Continue with sending even if update fails
-        }
-      }
-
-      // Prepare execution payload
-      const payload: any = {
-        targetTokens,
-      };
-
-      // Include notificationId if we're sending from a saved notification
-      // This allows the backend to update the notification status after sending
-      if (notification?.id) {
-        payload.notificationId = notification.id;
-      }
-
-      // Include title, body, and data for the notification
-      // If notificationId is provided, these will override the saved values
-      // If no notificationId, these are required for ad-hoc sends
-      payload.title = title.trim();
-      payload.body = body.trim();
-      if (jsonData.trim()) {
-        payload.data = JSON.parse(jsonData);
-      }
-
-      // DEBUG: Log who would receive the notification instead of sending
-      const group = selectedRecipient !== 'all' && selectedRecipient !== 'custom'
-        ? userGroups.find(
-            (g) =>
-              g.id === selectedRecipient ||
-              (g.name || '').toLowerCase() === selectedRecipient.toLowerCase() ||
-              (g.metaName || '').toLowerCase() === selectedRecipient.toLowerCase()
-          )
-        : null;
-      console.log('[Send Notification - DRY RUN] Users who would receive the notification:', {
-        recipientType: selectedRecipient === 'all' ? 'All Users' : selectedRecipient === 'custom' ? 'Custom (selected users)' : `Group: ${group?.name ?? group?.metaName ?? selectedRecipient}`,
-        count: targetTokens.length,
-        users: targetUsersForLog.length
-          ? targetUsersForLog.map((u) => ({ id: u.id ?? u.userId, email: u.email }))
-          : '(group: user list not available, tokens only)',
-        tokenCount: targetTokens.length,
-        payload: { title: payload.title, body: payload.body, data: payload.data, notificationId: payload.notificationId },
-      });
-
-      if (!DRY_RUN) {
-        await executeNotification(payload);
-        showToast('Notification sent successfully!', 'success');
-      } else {
-        showToast('Dry run: see console for users who would receive the notification', 'success');
-      }
-      
-      // Close modal after a short delay to show success message
-      setTimeout(() => {
-        onClose();
-        if (onSuccess) onSuccess();
-      }, 1000);
-    } catch (error) {
-      showToast('Failed to send notification', 'error');
-      console.error('Error:', error);
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (jsonError) {
-      showToast('Please fix JSON errors before saving', 'error');
-      return;
-    }
-
-    if (!title.trim() || !body.trim()) {
-      showToast('Title and body are required', 'error');
-      return;
-    }
-
-    if (!notification?.id) {
-      showToast('Cannot save: notification ID not found', 'error');
-      return;
-    }
-
-    try {
-      setIsSaving(true);
-
-      const updatePayload: any = {
-        notificationId: notification.id,
-        title: title.trim(),
-        body: body.trim(),
-      };
-
-      if (jsonData.trim()) {
-        updatePayload.data = JSON.parse(jsonData);
-      } else {
-        updatePayload.data = {};
-      }
-
-      await updateNotification(updatePayload);
-      
-      // Update original values so we don't trigger update on next send
-      setOriginalTitle(title.trim());
-      setOriginalBody(body.trim());
-      setOriginalData(jsonData.trim());
-      
-      showToast('Notification saved successfully!', 'success');
-      
-      // Refresh the notifications list in the parent component
-      if (onSuccess) {
-        onSuccess();
-      }
-    } catch (error) {
-      showToast('Failed to save notification', 'error');
-      console.error('Error:', error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  }, [isOpen, notification]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ isVisible: true, message, type });
+  };
+
+  const handleSend = async () => {
+    if (!notification) return;
+
+    try {
+      setIsSending(true);
+      const tokens = await resolveAudienceTokens(notification.userGroup || 'allUsers');
+
+      if (tokens.length === 0) {
+        showToast('No recipients found for this audience', 'error');
+        return;
+      }
+
+      const result = await executeNotification({
+        notificationId: notification.id,
+        targetTokens: tokens,
+        title: notification.title,
+        body: notification.body,
+        data: notification.data,
+        userGroup: notification.userGroup || 'allUsers',
+        trigger: 'manual',
+        sentBy: 'admin',
+      });
+
+      const msg =
+        (result.failureCount ?? 0) > 0
+          ? `Sent to ${result.sentCount} devices (${result.failureCount} failed)`
+          : `Campaign sent to ${result.sentCount} devices`;
+
+      showToast(msg, (result.failureCount ?? 0) > 0 ? 'info' : 'success');
+
+      setTimeout(() => {
+        onClose();
+        onSuccess?.();
+      }, 1200);
+    } catch (error: any) {
+      showToast(error?.response?.data?.error || 'Failed to send campaign', 'error');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   if (!notification) return null;
@@ -389,195 +94,79 @@ const SendNotificationModal = ({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={onClose}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-ink/60 backdrop-blur-sm z-40"
             />
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
-                  <h2 className="text-xl font-semibold text-gray-900">Send Notification</h2>
-                  <button
-                    onClick={onClose}
-                    className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {isLoadingGroups ? (
-                  <div className="flex flex-col items-center justify-center py-20 px-6">
-                    <Loader2 className="w-12 h-12 text-apple-blue animate-spin mb-4" />
-                    <p className="text-gray-600 font-medium">Loading notification and recipients...</p>
-                    <p className="text-gray-400 text-sm mt-1">Setting the right group for you</p>
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden relative">
+                <ModalBusyOverlay
+                  show={isSending}
+                  label="Sending campaign..."
+                />
+                {loadingCount && !isSending && (
+                  <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center rounded-2xl">
+                    <Loader2 className="w-6 h-6 text-accent animate-spin" />
                   </div>
-                ) : (
-                <>
-                <div className="px-6 py-6 space-y-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Title <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Enter notification title"
-                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Body <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      value={body}
-                      onChange={(e) => setBody(e.target.value)}
-                      rows={4}
-                      placeholder="Enter notification body"
-                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent transition-all resize-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Optional Data (JSON)
-                    </label>
-                    <textarea
-                      value={jsonData}
-                      onChange={(e) => handleJsonChange(e.target.value)}
-                      rows={4}
-                      placeholder='{"key": "value"}'
-                      className={`w-full px-4 py-3 bg-white border rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent transition-all resize-none font-mono text-sm ${
-                        jsonError ? 'border-red-300 focus:ring-red-500' : 'border-gray-200'
-                      }`}
-                    />
-                    {jsonError && (
-                      <p className="mt-2 text-sm text-red-600">{jsonError}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Send To <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={selectedRecipient}
-                        onChange={(e) => setSelectedRecipient(e.target.value)}
-                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent appearance-none pr-10"
-                        disabled={isLoadingGroups}
-                      >
-                        <option value="all">All Users</option>
-                        {userGroups.map((g) => (
-                          <option key={g.id} value={g.id}>
-                            {g.name || g.metaName || g.id}
-                          </option>
-                        ))}
-                        <option value="custom">Select Users</option>
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                    </div>
-
-                    {selectedRecipient === 'custom' && (
-                      <div className="mt-4 max-h-60 overflow-y-auto border border-gray-200 rounded-xl p-4">
-                        {isLoadingUsers ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="w-6 h-6 text-apple-blue animate-spin" />
-                          </div>
-                        ) : users.length === 0 ? (
-                          <p className="text-gray-500 text-center py-4">No users found</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {users.map((user) => {
-                              const userId = user.id || user.userId || '';
-                              const isSelected = selectedUsers.includes(userId);
-                              return (
-                                <label
-                                  key={userId}
-                                  className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
-                                    isSelected
-                                      ? 'bg-apple-blue/10 border-2 border-apple-blue'
-                                      : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => handleUserToggle(userId)}
-                                    className="w-4 h-4 text-apple-blue rounded focus:ring-apple-blue"
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-gray-900">
-                                      {user.email || user.userId || 'Unknown User'}
-                                    </p>
-                                    {user.modelName && (
-                                      <p className="text-xs text-gray-500">{user.modelName}</p>
-                                    )}
-                                  </div>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-between items-center rounded-b-2xl">
-                  <button
-                    onClick={onClose}
-                    disabled={isSending || isSaving}
-                    className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors font-medium disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={handleSave}
-                      disabled={isSending || isSaving || !!jsonError || !title.trim() || !body.trim()}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isSaving ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="w-4 h-4" />
-                          Save
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={handleSend}
-                      disabled={isSending || isSaving || !!jsonError || !title.trim() || !body.trim()}
-                      className="px-6 py-2 bg-apple-blue text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isSending ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Sending...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-4 h-4" />
-                          Send Notification
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-                </>
                 )}
+                <div className="px-6 py-5 border-b border-gray-100">
+                  <h2 className="text-lg font-bold text-ink">Send Campaign</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">Review before sending — this cannot be undone.</p>
+                </div>
+
+                <div className="px-6 py-5 space-y-4">
+                  <div className="bg-surface-muted rounded-xl p-4 space-y-3">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Title</p>
+                      <p className="text-sm font-semibold text-ink">{notification.title}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Message</p>
+                      <p className="text-sm text-gray-600 leading-relaxed">{notification.body}</p>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1 border-t border-gray-200">
+                      <Users className="w-4 h-4 text-accent" />
+                      <div>
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Audience</p>
+                        <p className="text-sm font-medium text-ink">
+                          {formatUserGroup(notification.userGroup)}
+                          {loadingCount ? (
+                            <span className="text-gray-400 font-normal ml-1">· counting...</span>
+                          ) : recipientCount !== null ? (
+                            <span className="text-gray-500 font-normal ml-1">· {recipientCount} devices</span>
+                          ) : null}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {recipientCount === 0 && !loadingCount && (
+                    <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3">
+                      <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                      <p className="text-sm text-red-700">No devices found for this audience. Check your user groups.</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="px-6 py-4 border-t border-gray-100 bg-surface-muted flex justify-end gap-3">
+                  <LoadingButton variant="secondary" onClick={onClose} disabled={isSending || loadingCount}>
+                    Cancel
+                  </LoadingButton>
+                  <LoadingButton
+                    variant="primary"
+                    onClick={handleSend}
+                    loading={isSending}
+                    loadingText="Sending..."
+                    disabled={loadingCount || recipientCount === 0}
+                    icon={<Send className="w-4 h-4" />}
+                  >
+                    Send Now
+                  </LoadingButton>
+                </div>
               </div>
             </motion.div>
           </>
@@ -595,4 +184,3 @@ const SendNotificationModal = ({
 };
 
 export default SendNotificationModal;
-

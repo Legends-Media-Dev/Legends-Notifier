@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Loader2, FolderTree, Search, RefreshCw } from 'lucide-react';
 import { fetchSegments, syncSegments, Segment } from '../lib/api';
+import PageLayout from '../components/PageLayout';
+import EmptyState from '../components/EmptyState';
+import LoadingButton from '../components/LoadingButton';
 import Toast from '../components/Toast';
 import SegmentUsersModal from '../components/SegmentUsersModal';
 
 const Segments = () => {
   const [segments, setSegments] = useState<Segment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState({ isVisible: false, message: '', type: 'success' as 'success' | 'error' | 'info' });
@@ -24,15 +29,18 @@ const Segments = () => {
 
   const loadSegments = async () => {
     try {
-      setLoading(true);
+      if (hasLoadedOnce) setIsRefreshing(true);
+      else setLoading(true);
       const data = await fetchSegments();
       setSegments(Array.isArray(data) ? data : []);
+      setHasLoadedOnce(true);
     } catch (error) {
       console.error('Failed to load segments:', error);
       setSegments([]);
       showToast('Failed to load segments', 'error');
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -41,7 +49,6 @@ const Segments = () => {
       setSyncing(true);
       await syncSegments();
       showToast('Segments synced successfully', 'success');
-      // Reload segments after sync
       await loadSegments();
     } catch (error) {
       console.error('Failed to sync segments:', error);
@@ -62,96 +69,106 @@ const Segments = () => {
   });
 
   return (
-    <div className="min-h-screen pb-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Segments</h1>
-              <p className="mt-2 text-gray-600">View and manage user segments from Shopify</p>
-            </div>
-            <button
-              onClick={handleSyncSegments}
-              disabled={syncing || loading}
-              className="px-4 py-2 bg-apple-blue text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {syncing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4" />
-                  Sync Segments
-                </>
-              )}
-            </button>
-          </div>
+    <PageLayout
+      title="Segments"
+      description="View and manage user segments synced from Shopify"
+      actions={
+        <LoadingButton
+          variant="primary"
+          onClick={handleSyncSegments}
+          loading={syncing}
+          loadingText="Syncing..."
+          disabled={loading}
+          icon={<RefreshCw className="w-4 h-4" />}
+        >
+          Sync Segments
+        </LoadingButton>
+      }
+    >
+      <div className="mb-6">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search segments..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="input-field pl-10 w-full"
+          />
         </div>
-
-        <div className="mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search segments..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent"
-            />
-          </div>
-        </div>
-
-        {(loading || syncing) ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 text-apple-blue animate-spin" />
-          </div>
-        ) : filteredSegments.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-            <FolderTree className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg">
-              {searchQuery ? 'No segments found matching your search' : 'No segments found'}
-            </p>
-            <p className="text-gray-400 mt-2">
-              {searchQuery 
-                ? 'Try adjusting your search query'
-                : 'Segments from Shopify will appear here once they\'re available'}
-            </p>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Segment Name
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredSegments.map((segment, index) => (
-                    <tr key={segment.id || `segment-${index}`} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <button
-                          onClick={() => handleSegmentClick(segment)}
-                          className="w-full flex items-center gap-2 text-left hover:text-apple-blue transition-colors group"
-                        >
-                          <FolderTree className="w-4 h-4 text-gray-400 group-hover:text-apple-blue transition-colors" />
-                          <span className="text-gray-900 font-medium group-hover:text-apple-blue">
-                            {segment.name || segment.segmentName || 'Unnamed Segment'}
-                          </span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="w-8 h-8 text-accent animate-spin" />
+        </div>
+      ) : filteredSegments.length === 0 ? (
+        <EmptyState
+          icon={<FolderTree className="w-7 h-7" />}
+          title={searchQuery ? 'No matching segments' : 'No segments yet'}
+          description={
+            searchQuery
+              ? 'Try a different search term.'
+              : 'Segments from Shopify will appear here. Use Sync Segments to pull the latest.'
+          }
+          action={
+            !searchQuery ? (
+              <LoadingButton
+                variant="primary"
+                onClick={handleSyncSegments}
+                loading={syncing}
+                loadingText="Syncing..."
+                icon={<RefreshCw className="w-4 h-4" />}
+              >
+                Sync Segments
+              </LoadingButton>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className="table-shell relative">
+          {isRefreshing && (
+            <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] z-10 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-accent animate-spin" />
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <th>Segment Name</th>
+                  <th className="text-right w-32">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSegments.map((segment, index) => (
+                  <tr key={segment.id || `segment-${index}`}>
+                    <td>
+                      <button
+                        onClick={() => handleSegmentClick(segment)}
+                        className="flex items-center gap-2.5 text-left group"
+                      >
+                        <FolderTree className="w-4 h-4 text-gray-400 group-hover:text-accent transition-colors shrink-0" />
+                        <span className="text-sm font-semibold text-ink group-hover:text-accent transition-colors">
+                          {segment.name || segment.segmentName || 'Unnamed Segment'}
+                        </span>
+                      </button>
+                    </td>
+                    <td className="text-right">
+                      <button
+                        onClick={() => handleSegmentClick(segment)}
+                        className="text-xs font-medium text-accent hover:text-accent-hover transition-colors"
+                      >
+                        View users →
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <SegmentUsersModal
         segmentName={selectedSegment?.name || selectedSegment?.segmentName || 'Segment'}
@@ -169,9 +186,8 @@ const Segments = () => {
         isVisible={toast.isVisible}
         onClose={() => setToast({ ...toast, isVisible: false })}
       />
-    </div>
+    </PageLayout>
   );
 };
 
 export default Segments;
-

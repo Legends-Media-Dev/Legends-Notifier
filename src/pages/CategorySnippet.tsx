@@ -19,6 +19,9 @@ import {
   ShopCollection,
   type CategorySnippetDoc,
 } from '../lib/api';
+import PageLayout from '../components/PageLayout';
+import SectionCard from '../components/SectionCard';
+import LoadingButton from '../components/LoadingButton';
 import Toast from '../components/Toast';
 
 interface SelectedCollection {
@@ -76,7 +79,7 @@ function SortableCollectionRow({
           type="button"
           onClick={() => moveUp(index)}
           disabled={index === 0}
-          className="p-1 text-gray-400 hover:text-apple-blue disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-1 text-gray-400 hover:text-accent disabled:opacity-30 disabled:cursor-not-allowed"
           title="Move up"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -87,7 +90,7 @@ function SortableCollectionRow({
           type="button"
           onClick={() => moveDown(index)}
           disabled={isLast}
-          className="p-1 text-gray-400 hover:text-apple-blue disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-1 text-gray-400 hover:text-accent disabled:opacity-30 disabled:cursor-not-allowed"
           title="Move down"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -96,7 +99,7 @@ function SortableCollectionRow({
         </button>
       </div>
       <div
-        className="touch-none cursor-grab active:cursor-grabbing flex items-center p-1 -m-1 rounded text-gray-400 hover:text-apple-blue hover:bg-apple-blue/5"
+        className="touch-none cursor-grab active:cursor-grabbing flex items-center p-1 -m-1 rounded text-gray-400 hover:text-accent hover:bg-accent-light/50"
         {...attributes}
         {...listeners}
       >
@@ -115,7 +118,7 @@ function SortableCollectionRow({
           value={displayLabel}
           onChange={(e) => onDisplayNameChange(item.handle, e.target.value)}
           placeholder="Display name"
-          className="w-full px-3 py-1.5 text-sm font-medium text-gray-900 bg-transparent border border-transparent rounded hover:border-gray-200 focus:border-apple-blue focus:outline-none focus:ring-1 focus:ring-apple-blue"
+          className="w-full px-3 py-1.5 text-sm font-medium text-ink bg-transparent border border-transparent rounded-lg hover:border-gray-200 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
         />
         <p className="text-xs text-gray-500 truncate">{item.handle}</p>
       </div>
@@ -271,94 +274,100 @@ const CategorySnippet = () => {
   };
 
   return (
-    <div className="min-h-screen pb-20">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Category Snippet</h1>
-          <p className="mt-2 text-gray-600">
-            Set the snippet title and choose an even number of collections to show on the app home. Reorder and set display names.
-          </p>
-        </div>
-
+    <PageLayout
+      title="Category Snippet"
+      description="Set the snippet title and choose an even number of collections for the app home. Reorder and set display names."
+    >
         {loadingCollections ? (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col items-center justify-center py-20">
-            <Loader2 className="w-10 h-10 text-apple-blue animate-spin mb-4" />
-            <p className="text-gray-600 font-medium">Loading collections...</p>
+          <div className="page-card flex flex-col items-center justify-center py-24">
+            <Loader2 className="w-8 h-8 text-accent animate-spin mb-4" />
+            <p className="text-gray-500 font-medium">Loading collections...</p>
           </div>
         ) : loadError ? (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-8 text-center">
-              <p className="text-red-600 font-medium">Could not load</p>
+          <div className="page-card">
+            <div className="px-6 py-12 text-center">
+              <p className="text-red-600 font-semibold">Could not load</p>
               <p className="text-sm text-gray-500 mt-2">Error: {loadError}</p>
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="mt-4 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
-              >
+              <LoadingButton variant="secondary" onClick={() => window.location.reload()} className="mt-6">
                 Retry
-              </button>
+              </LoadingButton>
             </div>
           </div>
         ) : (
-          <>
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-apple-blue/10 flex items-center justify-center">
-                  <LayoutGrid className="w-5 h-5 text-apple-blue" />
-                </div>
-                <div className="flex-1">
-                  <h2 className="font-semibold text-gray-900">Section title</h2>
-                  <p className="text-sm text-gray-500">Title shown above the category collection list (e.g. Explore)</p>
-                </div>
-              </div>
+          <div className="space-y-6">
+            <SectionCard
+              icon={<LayoutGrid className="w-5 h-5" />}
+              title="Section title"
+              description="Title shown above the category collection list (e.g. Explore)"
+            >
               <div className="p-6">
+                <label className="label-field">Section title</label>
                 <input
                   type="text"
                   value={sectionTitle}
                   onChange={(e) => setSectionTitle(e.target.value)}
                   placeholder="e.g. Explore"
-                  className="w-full max-w-md px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent"
+                  className="input-field max-w-md"
                 />
               </div>
-            </div>
+            </SectionCard>
 
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-apple-blue/10 flex items-center justify-center">
-                    <ShoppingBag className="w-5 h-5 text-apple-blue" />
-                  </div>
-                  <div>
-                    <h2 className="font-semibold text-gray-900">Collections</h2>
-                    <p className="text-sm text-gray-500">
-                      Add an <strong>even number</strong> of collections. You have {selected.length} selected.
-                      {selected.length > 0 && selected.length % 2 !== 0 && (
-                        <span className="text-amber-600 ml-1">(Add or remove one to save.)</span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-                <button
+            <SectionCard
+              icon={<ShoppingBag className="w-5 h-5" />}
+              title="Collections"
+              description={
+                <>
+                  Add an <strong>even number</strong> of collections. You have {selected.length} selected.
+                  {selected.length > 0 && selected.length % 2 !== 0 && (
+                    <span className="text-amber-600 ml-1">(Add or remove one to save.)</span>
+                  )}
+                </>
+              }
+              action={
+                <LoadingButton
+                  variant="primary"
                   onClick={() => setAddModalOpen(true)}
                   disabled={canAdd.length === 0}
-                  className="px-4 py-2 bg-apple-blue text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  icon={<Plus className="w-4 h-4" />}
+                  className="!py-2"
                 >
-                  <Plus className="w-4 h-4" />
                   Add collection
-                </button>
-              </div>
-
-              <div className="divide-y divide-gray-200">
+                </LoadingButton>
+              }
+              footer={
+                selectedSorted.length > 0 ? (
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    {!isEvenCount && (
+                      <p className="text-sm text-amber-600 font-medium">
+                        Include an even number of collections (currently {selected.length}) to save.
+                      </p>
+                    )}
+                    <div className="flex justify-end sm:ml-auto">
+                      <LoadingButton
+                        variant="primary"
+                        onClick={handleSave}
+                        loading={saving}
+                        loadingText="Saving..."
+                        disabled={!canSave}
+                      >
+                        Save settings
+                      </LoadingButton>
+                    </div>
+                  </div>
+                ) : undefined
+              }
+            >
+              <div className="divide-y divide-gray-100">
                 {selectedSorted.length === 0 ? (
-                  <div className="px-6 py-12 text-center text-gray-500">
+                  <div className="px-6 py-16 text-center">
                     <ShoppingBag className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                    <p className="font-medium">No collections selected</p>
-                    <p className="text-sm mt-1">Click “Add collection” and choose an even number (2, 4, 6, …) to save.</p>
+                    <p className="font-semibold text-ink">No collections selected</p>
+                    <p className="text-sm text-gray-500 mt-1">Choose an even number (2, 4, 6, …) to save.</p>
                   </div>
                 ) : (
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                     <SortableContext items={selectedSorted.map((s) => s.handle)} strategy={verticalListSortingStrategy}>
-                      <div className="divide-y divide-gray-200">
+                      <div className="divide-y divide-gray-100">
                         {selectedSorted.map((item, index) => (
                           <SortableCollectionRow
                             key={item.handle}
@@ -377,50 +386,24 @@ const CategorySnippet = () => {
                   </DndContext>
                 )}
               </div>
-
-              {selectedSorted.length > 0 && (
-                <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  {!isEvenCount && (
-                    <p className="text-sm text-amber-600 font-medium">
-                      Include an even number of collections (currently {selected.length}) to save.
-                    </p>
-                  )}
-                  <div className="flex justify-end sm:ml-auto">
-                    <button
-                      onClick={handleSave}
-                      disabled={saving || !canSave}
-                      className="px-6 py-2 bg-apple-blue text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {saving ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        'Save settings'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
+            </SectionCard>
+          </div>
         )}
 
         {addModalOpen && (
           <>
             <div
-              className="fixed inset-0 bg-black/20 z-40"
+              className="fixed inset-0 bg-ink/60 backdrop-blur-sm z-40"
               onClick={() => setAddModalOpen(false)}
               aria-hidden
             />
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[80vh] flex flex-col">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900">Add collection</h3>
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] flex flex-col overflow-hidden">
+                <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-ink">Add collection</h3>
                   <button
                     onClick={() => setAddModalOpen(false)}
-                    className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                    className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"
                   >
                     <span className="sr-only">Close</span>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -428,7 +411,7 @@ const CategorySnippet = () => {
                 </div>
                 <div className="flex-1 overflow-y-auto p-4">
                   {canAdd.length === 0 ? (
-                    <p className="text-gray-500 text-center py-4">All collections are already added.</p>
+                    <p className="text-gray-500 text-center py-8">All collections are already added.</p>
                   ) : (
                     <ul className="space-y-1">
                       {canAdd.map((col) => (
@@ -436,20 +419,20 @@ const CategorySnippet = () => {
                           <button
                             type="button"
                             onClick={() => addCollection(col)}
-                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-gray-100 transition-colors"
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-surface-muted border border-transparent hover:border-gray-200 transition-colors"
                           >
                             {col.image?.src ? (
-                              <img src={col.image.src} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                              <img src={col.image.src} alt="" className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
                             ) : (
-                              <div className="w-12 h-12 rounded-lg bg-gray-200 flex-shrink-0 flex items-center justify-center">
+                              <div className="w-12 h-12 rounded-xl bg-surface-muted flex-shrink-0 flex items-center justify-center">
                                 <ShoppingBag className="w-6 h-6 text-gray-400" />
                               </div>
                             )}
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium text-gray-900 truncate">{col.title}</p>
+                              <p className="font-medium text-ink truncate">{col.title}</p>
                               <p className="text-xs text-gray-500 truncate">{col.handle}</p>
                             </div>
-                            <Plus className="w-4 h-4 text-apple-blue flex-shrink-0" />
+                            <Plus className="w-4 h-4 text-accent flex-shrink-0" />
                           </button>
                         </li>
                       ))}
@@ -460,7 +443,6 @@ const CategorySnippet = () => {
             </div>
           </>
         )}
-      </div>
 
       <Toast
         message={toast.message}
@@ -468,7 +450,7 @@ const CategorySnippet = () => {
         isVisible={toast.isVisible}
         onClose={() => setToast({ ...toast, isVisible: false })}
       />
-    </div>
+    </PageLayout>
   );
 };
 

@@ -7,13 +7,34 @@ export default {
   theme: {
     extend: {
       colors: {
-        'apple-blue': '#007AFF',
+        ink: {
+          DEFAULT: '#18181b',
+          light: '#27272a',
+          muted: '#3f3f46',
+          border: '#2e2e32',
+        },
+        accent: {
+          DEFAULT: '#7c3aed',
+          hover: '#6d28d9',
+          light: '#ede9fe',
+          muted: '#a78bfa',
+        },
+        surface: {
+          DEFAULT: '#fafafa',
+          card: '#ffffff',
+          muted: '#f4f4f5',
+        },
+        // legacy alias — maps to accent violet
+        'apple-blue': '#7c3aed',
       },
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'Helvetica Neue', 'sans-serif'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+      },
+      boxShadow: {
+        card: '0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06)',
+        'card-hover': '0 4px 12px 0 rgb(0 0 0 / 0.08)',
       },
     },
   },
   plugins: [],
 }
-

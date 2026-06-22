@@ -1,19 +1,18 @@
 import axios from 'axios';
+import { normalizeStatus } from './notificationUtils';
+import { setDashboardCache } from './dashboardCache';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-export interface User {
-  id?: string; // Firestore document ID (may be in the document or as the key)
-  userId?: string;
-  email?: string;
-  brand?: string;
-  modelName?: string;
-  platform?: string;
-  osVersion?: string;
-  token?: string;
-  updatedAt?: string;
-  /** Group names or group objects included from fetchUsers */
-  groups?: string[] | { id?: string; name?: string }[];
+export interface SendHistoryEntry {
+  id: string;
+  sentAt: string;
+  sentBy?: string;
+  trigger?: 'manual' | 'resend' | 'scheduled' | 'scheduled-early';
+  userGroup?: string;
+  recipientCount?: number;
+  successCount?: number;
+  failureCount?: number;
 }
 
 export interface Notification {
@@ -23,10 +22,49 @@ export interface Notification {
   data?: Record<string, any>;
   createdAt: string;
   createdBy?: string;
+  updatedAt?: string;
   targetTokens?: string[];
   status?: string;
-  sendAt?: string; // ISO date string for scheduled notifications
+  sendAt?: string;
   userGroup?: string;
+  sendCount?: number;
+  lastSentAt?: string;
+  sendHistory?: SendHistoryEntry[];
+  duplicatedFrom?: string;
+}
+
+export interface User {
+  id?: string;
+  userId?: string;
+  email?: string;
+  brand?: string;
+  modelName?: string;
+  platform?: string;
+  osVersion?: string;
+  token?: string;
+  updatedAt?: string;
+  groups?: string[] | { id?: string; name?: string }[];
+}
+
+function transformNotification(notif: any): Notification {
+  const status = normalizeStatus(notif.status);
+  return {
+    id: notif.id || notif.docId || '',
+    title: notif.title || '',
+    body: notif.body || '',
+    data: notif.data || {},
+    createdAt: notif.createdAt || notif.created_at || '',
+    updatedAt: notif.updatedAt,
+    createdBy: notif.createdBy || 'admin',
+    targetTokens: notif.targetTokens || [],
+    status,
+    sendAt: notif.sendAt || undefined,
+    userGroup: notif.userGroup || undefined,
+    sendCount: notif.sendCount ?? (notif.executedAt ? 1 : 0),
+    lastSentAt: notif.lastSentAt || notif.executedAt || undefined,
+    sendHistory: Array.isArray(notif.sendHistory) ? notif.sendHistory : [],
+    duplicatedFrom: notif.duplicatedFrom,
+  };
 }
 
 export interface UserGroup {
@@ -117,27 +155,11 @@ export const fetchNotifications = async (): Promise<Notification[]> => {
       return [];
     }
     
-    // Transform the notifications to ensure they have the correct structure
-    // Handle Firestore documents where id might be in the document or as a separate field
-    return notifications.map((notif, index) => {
-      // If the notification is a Firestore document, it might have id as a property
-      // or the id might be passed separately
-      return {
-        id: notif.id || notif.docId || `notification-${index}`,
-        title: notif.title || '',
-        body: notif.body || '',
-        data: notif.data || {},
-        createdAt: notif.createdAt || notif.created_at || '',
-        createdBy: notif.createdBy || 'system',
-        targetTokens: notif.targetTokens || [],
-        status: notif.status || 'pending',
-        sendAt: notif.sendAt || undefined,
-        userGroup: notif.userGroup || undefined,
-      };
-    });
+    return notifications
+      .map((notif) => transformNotification(notif))
+      .filter((n) => n.id);
   } catch (error) {
     console.error('Error fetching notifications:', error);
-    // Return empty array on error instead of throwing
     return [];
   }
 };
@@ -159,19 +181,9 @@ export const fetchScheduledNotifications = async (): Promise<Notification[]> => 
       return [];
     }
     
-    // Transform notifications
-    return notifications.map((notif, index) => ({
-      id: notif.id || notif.docId || `notification-${index}`,
-      title: notif.title || '',
-      body: notif.body || '',
-      data: notif.data || {},
-      createdAt: notif.createdAt || notif.created_at || '',
-      createdBy: notif.createdBy || 'system',
-      targetTokens: notif.targetTokens || [],
-      status: notif.status || 'pending',
-      sendAt: notif.sendAt || undefined,
-      userGroup: notif.userGroup || undefined,
-    }));
+    return notifications
+      .map((notif) => transformNotification(notif))
+      .filter((n) => n.id);
   } catch (error) {
     console.error('Error fetching scheduled notifications:', error);
     return [];
@@ -209,11 +221,23 @@ export const saveNotification = async (payload: SaveNotificationPayload): Promis
 };
 
 export interface ExecuteNotificationPayload {
-  notificationId?: string; // Optional: if provided, fetches notification from Firestore
-  targetTokens: string[]; // Required: array of Expo push tokens (sent as overrideTokens in backend)
-  title?: string; // Optional: only needed if no notificationId
-  body?: string; // Optional: only needed if no notificationId
-  data?: Record<string, any>; // Optional: only needed if no notificationId
+  notificationId?: string;
+  targetTokens: string[];
+  title?: string;
+  body?: string;
+  data?: Record<string, any>;
+  sentBy?: string;
+  trigger?: 'manual' | 'resend' | 'scheduled' | 'scheduled-early';
+  userGroup?: string;
+}
+
+export interface ExecuteNotificationResponse {
+  success: boolean;
+  message: string;
+  sentCount: number;
+  successCount?: number;
+  failureCount?: number;
+  sendHistoryEntry?: SendHistoryEntry;
 }
 
 export interface UpdateNotificationPayload {
@@ -244,18 +268,33 @@ export const updateNotification = async (payload: UpdateNotificationPayload): Pr
   }
 };
 
-export const executeNotification = async (payload: ExecuteNotificationPayload | string): Promise<void> => {
+export const executeNotification = async (payload: ExecuteNotificationPayload | string): Promise<ExecuteNotificationResponse> => {
   try {
-    // Handle both old format (just notificationId string) and new format (payload object)
     if (typeof payload === 'string') {
-      // Old format - just notificationId, backend will use saved tokens
-      await api.post('/executeNotificationHandler', { notificationId: payload });
-    } else {
-      // New format - send with targetTokens (and optionally title/body/data if no notificationId)
-      await api.post('/executeNotificationHandler', payload);
+      const response = await api.post('/executeNotificationHandler', { notificationId: payload });
+      return response.data;
     }
+    const response = await api.post('/executeNotificationHandler', payload);
+    return response.data;
   } catch (error) {
     console.error('Error executing notification:', error);
+    throw error;
+  }
+};
+
+export interface DuplicateNotificationResponse {
+  success: boolean;
+  id: string;
+  message: string;
+  duplicatedFrom: string;
+}
+
+export const duplicateNotification = async (notificationId: string): Promise<DuplicateNotificationResponse> => {
+  try {
+    const response = await api.post('/duplicateNotificationHandler', { notificationId });
+    return response.data;
+  } catch (error) {
+    console.error('Error duplicating notification:', error);
     throw error;
   }
 };
@@ -659,6 +698,100 @@ export interface FetchCategorySnippetResponse {
   items: CategorySnippetDoc[];
   total: number;
 }
+
+export interface DashboardChartBucket {
+  date: string;
+  label: string;
+  totalRevenue: number;
+  mobileAppRevenue: number;
+  otherRevenue: number;
+  totalOrders: number;
+  mobileAppOrders: number;
+  otherOrders: number;
+  pushRecipients: number;
+}
+
+export interface DashboardRecentCampaign {
+  id: string;
+  title: string;
+  status: string;
+  lastSentAt: string | null;
+  recipientCount: number;
+  userGroup: string | null;
+}
+
+export interface DashboardStats {
+  success: boolean;
+  salesChannel: string;
+  period: {
+    type: 'current_month' | 'days' | 'lifetime';
+    days: number | null;
+    label: string;
+    dateRangeLabel: string;
+    comparisonLabel: string | null;
+    start: string;
+    end: string;
+  };
+  chartPeriod: {
+    months: number;
+    granularity: 'monthly';
+    label: string;
+    dateRangeLabel: string;
+    start: string;
+    end: string;
+  };
+  sales: {
+    currency: string;
+    source: 'orders' | 'unavailable';
+    notice: string | null;
+    totalRevenue: number;
+    totalOrders: number;
+    revenueChange: number | null;
+    ordersChange: number | null;
+    mobileAppRevenue: number;
+    mobileAppOrders: number;
+    mobileAppRevenueChange: number | null;
+    mobileAppOrdersChange: number | null;
+    mobileAppShare: number;
+    ordersTruncated?: boolean;
+    definitions: {
+      mobileAppRevenue: string;
+      totalRevenue: string;
+      mobileAppShare: string;
+    };
+  };
+  app: {
+    totalUsers: number;
+    usersWithEmail: number;
+    sendEventsInPeriod: number;
+    totalRecipientsInPeriod: number;
+    scheduledCount: number;
+    draftCount: number;
+    sentCampaignCount: number;
+    totalCampaigns: number;
+  };
+  chart: DashboardChartBucket[];
+  recentCampaigns: DashboardRecentCampaign[];
+}
+
+export interface FetchDashboardStatsParams {
+  period?: 'current_month' | '7' | '30' | '90' | 'lifetime';
+  forceRefresh?: boolean;
+}
+
+export const fetchDashboardStats = async (
+  params: FetchDashboardStatsParams = {}
+): Promise<DashboardStats> => {
+  const period = params.period ?? 'current_month';
+
+  const response = await api.get<DashboardStats>('/fetchDashboardStatsHandler', {
+    params: { period },
+  });
+
+  setDashboardCache(period, response.data);
+
+  return response.data;
+};
 
 export interface PushCategorySnippetPayload {
   docId?: string;

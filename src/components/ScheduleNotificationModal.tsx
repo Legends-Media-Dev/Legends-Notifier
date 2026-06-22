@@ -1,187 +1,110 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Loader2, Calendar, Plus, FileText, ChevronLeft, ChevronDown } from 'lucide-react';
-import { Notification, fetchNotifications, updateNotification, saveNotification, fetchUserGroups, UserGroup } from '../lib/api';
+import { Loader2, Calendar, Users, X } from 'lucide-react';
+import {
+  Notification,
+  fetchNotifications,
+  updateOrCancelScheduledNotification,
+} from '../lib/api';
+import { isSchedulable, formatUserGroup } from '../lib/notificationUtils';
 import { truncateText } from '../lib/utils';
+import LoadingButton from './LoadingButton';
+import ModalBusyOverlay from './ModalBusyOverlay';
 import Toast from './Toast';
 
 interface ScheduleNotificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  preselectedNotification?: Notification | null;
+  onCreateNew?: () => void;
 }
-
-type FlowStep = 'choice' | 'new' | 'existing';
 
 const ScheduleNotificationModal = ({
   isOpen,
   onClose,
   onSuccess,
+  preselectedNotification,
+  onCreateNew,
 }: ScheduleNotificationModalProps) => {
-  const [step, setStep] = useState<FlowStep>('choice');
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
-  
-  // User groups
-  const [userGroups, setUserGroups] = useState<UserGroup[]>([]);
-  const [selectedUserGroup, setSelectedUserGroup] = useState<string>('');
-  const [loadingUserGroups, setLoadingUserGroups] = useState(false);
-  
-  // New notification form fields
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [jsonData, setJsonData] = useState('');
-  const [jsonError, setJsonError] = useState('');
   const [sendAtDate, setSendAtDate] = useState('');
   const [sendAtTime, setSendAtTime] = useState('');
-  
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState({ isVisible: false, message: '', type: 'success' as 'success' | 'error' | 'info' });
 
-  useEffect(() => {
-    if (isOpen) {
-      setStep('choice');
-      setTitle('');
-      setBody('');
-      setJsonData('');
-      setJsonError('');
-      setSendAtDate('');
-      setSendAtTime('');
-      setSelectedNotification(null);
-      setSelectedUserGroup('');
-    }
-  }, [isOpen]);
+  const schedulableNotifications = useMemo(
+    () => notifications.filter(isSchedulable),
+    [notifications]
+  );
+
+  const activeNotification = preselectedNotification ?? selectedNotification;
 
   useEffect(() => {
-    if (step === 'existing' && notifications.length === 0) {
-      loadNotifications();
+    if (isOpen) {
+      setSendAtDate('');
+      setSendAtTime('');
+      setSelectedNotification(preselectedNotification ?? null);
+      if (!preselectedNotification) loadNotifications();
     }
-    if ((step === 'new' || step === 'existing') && userGroups.length === 0) {
-      loadUserGroups();
-    }
-  }, [step]);
+  }, [isOpen, preselectedNotification]);
 
   const loadNotifications = async () => {
     try {
       setLoadingNotifications(true);
       const data = await fetchNotifications();
       setNotifications(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Failed to load notifications:', error);
-      showToast('Failed to load notifications', 'error');
+    } catch {
+      showToast('Failed to load campaigns', 'error');
     } finally {
       setLoadingNotifications(false);
     }
   };
 
-  const loadUserGroups = async () => {
-    try {
-      setLoadingUserGroups(true);
-      const data = await fetchUserGroups();
-      setUserGroups(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Failed to load user groups:', error);
-      showToast('Failed to load user groups', 'error');
-    } finally {
-      setLoadingUserGroups(false);
-    }
+  const getMinDateTime = () => {
+    const now = new Date();
+    return {
+      date: now.toISOString().slice(0, 10),
+      time: now.toTimeString().slice(0, 5),
+    };
   };
 
-  const validateJson = (jsonString: string): boolean => {
-    if (!jsonString.trim()) return true;
-    try {
-      JSON.parse(jsonString);
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  const minDateTime = getMinDateTime();
 
-  const handleJsonChange = (value: string) => {
-    setJsonData(value);
-    if (value.trim() && !validateJson(value)) {
-      setJsonError('Invalid JSON format');
-    } else {
-      setJsonError('');
-    }
-  };
-
-  const handleScheduleExisting = async () => {
-    if (!selectedNotification) {
-      showToast('Please select a notification', 'error');
+  const handleSchedule = async () => {
+    if (!activeNotification) {
+      showToast('Please select a campaign', 'error');
       return;
     }
-
     if (!sendAtDate || !sendAtTime) {
       showToast('Please select a date and time', 'error');
       return;
     }
 
+    const sendAt = new Date(`${sendAtDate}T${sendAtTime}`);
+    if (Number.isNaN(sendAt.getTime()) || sendAt.getTime() <= Date.now()) {
+      showToast('Schedule time must be in the future', 'error');
+      return;
+    }
+
     try {
       setIsSaving(true);
-      const sendAt = new Date(`${sendAtDate}T${sendAtTime}`).toISOString();
-      
-      await updateNotification({
-        notificationId: selectedNotification.id,
-        sendAt,
-        status: 'pending',
-        userGroup: selectedUserGroup || 'allUsers',
+      await updateOrCancelScheduledNotification({
+        notificationId: activeNotification.id,
+        updates: {
+          sendAt: sendAt.toISOString(),
+        },
       });
 
-      showToast('Notification scheduled successfully!', 'success');
+      showToast(`Scheduled for ${sendAt.toLocaleString()}`, 'success');
       setTimeout(() => {
         onClose();
-        if (onSuccess) onSuccess();
-      }, 1000);
-    } catch (error) {
-      showToast('Failed to schedule notification', 'error');
-      console.error('Error:', error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleScheduleNew = async () => {
-    if (jsonError) {
-      showToast('Please fix JSON errors before submitting', 'error');
-      return;
-    }
-
-    if (!title.trim() || !body.trim()) {
-      showToast('Title and body are required', 'error');
-      return;
-    }
-
-    if (!sendAtDate || !sendAtTime) {
-      showToast('Please select a date and time', 'error');
-      return;
-    }
-
-    try {
-      setIsSaving(true);
-      const sendAt = new Date(`${sendAtDate}T${sendAtTime}`).toISOString();
-      
-      const payload = {
-        title: title.trim(),
-        body: body.trim(),
-        ...(jsonData.trim() && { data: JSON.parse(jsonData) }),
-        sendAt,
-        status: 'pending',
-        userGroup: selectedUserGroup || 'allUsers',
-      };
-
-      await saveNotification(payload);
-      
-      showToast('Notification scheduled successfully!', 'success');
-      
-      setTimeout(() => {
-        onClose();
-        if (onSuccess) onSuccess();
-      }, 1000);
-    } catch (error) {
-      showToast('Failed to schedule notification', 'error');
-      console.error('Error:', error);
+        onSuccess?.();
+      }, 900);
+    } catch (error: any) {
+      showToast(error?.response?.data?.error || 'Failed to schedule', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -190,22 +113,6 @@ const ScheduleNotificationModal = ({
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ isVisible: true, message, type });
   };
-
-  // Get minimum date/time (now)
-  const getMinDateTime = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    return {
-      date: `${year}-${month}-${day}`,
-      time: `${hours}:${minutes}`,
-    };
-  };
-
-  const minDateTime = getMinDateTime();
 
   if (!isOpen) return null;
 
@@ -219,320 +126,118 @@ const ScheduleNotificationModal = ({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={onClose}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-ink/60 backdrop-blur-sm z-40"
             />
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
-                  <div className="flex items-center gap-3">
-                    {step !== 'choice' && (
-                      <button
-                        onClick={() => setStep('choice')}
-                        className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100"
-                      >
-                        <ChevronLeft className="w-5 h-5" />
-                      </button>
-                    )}
-                    <h2 className="text-xl font-semibold text-gray-900">
-                      {step === 'choice' 
-                        ? 'Schedule Notification'
-                        : step === 'new'
-                        ? 'Create & Schedule New Notification'
-                        : 'Schedule Existing Notification'}
-                    </h2>
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full flex flex-col overflow-hidden relative">
+                <ModalBusyOverlay show={isSaving} label="Scheduling campaign..." />
+                <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-ink">Schedule Campaign</h2>
+                    <p className="text-sm text-gray-500 mt-0.5">Pick when to send — audience is already set.</p>
                   </div>
-                  <button
-                    onClick={onClose}
-                    className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100"
-                  >
+                  <button onClick={onClose} disabled={isSaving} className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg disabled:opacity-50">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                <div className="px-6 py-6">
-                  {step === 'choice' && (
-                    <div className="space-y-4">
-                      <p className="text-gray-600 mb-6">Choose how you'd like to schedule a notification:</p>
-                      <button
-                        onClick={() => setStep('new')}
-                        className="w-full p-6 bg-white border-2 border-gray-200 rounded-xl hover:border-apple-blue hover:bg-blue-50 transition-all text-left group"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-apple-blue/10 flex items-center justify-center group-hover:bg-apple-blue/20 transition-colors">
-                            <Plus className="w-6 h-6 text-apple-blue" />
-                          </div>
-                          <div>
-                            <h3 className="text-lg font-semibold text-gray-900">Create New Notification</h3>
-                            <p className="text-sm text-gray-600 mt-1">Create a new notification and schedule it for later</p>
-                          </div>
+                <div className="px-6 py-5 space-y-5">
+                  {!preselectedNotification && (
+                    <div>
+                      <label className="label-field">Select draft</label>
+                      {loadingNotifications ? (
+                        <div className="flex justify-center py-8">
+                          <Loader2 className="w-6 h-6 text-accent animate-spin" />
                         </div>
-                      </button>
-
-                      <button
-                        onClick={() => setStep('existing')}
-                        className="w-full p-6 bg-white border-2 border-gray-200 rounded-xl hover:border-apple-blue hover:bg-blue-50 transition-all text-left group"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-apple-blue/10 flex items-center justify-center group-hover:bg-apple-blue/20 transition-colors">
-                            <FileText className="w-6 h-6 text-apple-blue" />
-                          </div>
-                          <div>
-                            <h3 className="text-lg font-semibold text-gray-900">Use Existing Notification</h3>
-                            <p className="text-sm text-gray-600 mt-1">Schedule an existing saved notification</p>
-                          </div>
+                      ) : schedulableNotifications.length === 0 ? (
+                        <div className="bg-surface-muted rounded-xl p-5 text-center border border-gray-200">
+                          <p className="text-sm text-gray-600 font-medium">No drafts available</p>
+                          {onCreateNew && (
+                            <button
+                              onClick={() => { onClose(); onCreateNew(); }}
+                              className="mt-3 text-sm text-accent font-medium hover:underline"
+                            >
+                              Create a campaign first
+                            </button>
+                          )}
                         </div>
-                      </button>
+                      ) : (
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                          {schedulableNotifications.map((notif) => (
+                            <button
+                              key={notif.id}
+                              type="button"
+                              onClick={() => setSelectedNotification(notif)}
+                              className={`w-full p-3 rounded-xl text-left border transition-colors ${
+                                selectedNotification?.id === notif.id
+                                  ? 'border-accent bg-accent-light'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              <p className="text-sm font-semibold text-ink">{notif.title}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">{truncateText(notif.body, 50)}</p>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {step === 'existing' && (
-                    <div className="space-y-6">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Select Notification
-                        </label>
-                        {loadingNotifications ? (
-                          <div className="flex items-center justify-center py-12">
-                            <Loader2 className="w-6 h-6 text-apple-blue animate-spin" />
-                          </div>
-                        ) : notifications.length === 0 ? (
-                          <div className="bg-gray-50 rounded-xl p-8 text-center">
-                            <p className="text-gray-500">No notifications found</p>
-                          </div>
-                        ) : (
-                          <div className="max-h-64 overflow-y-auto space-y-2 border border-gray-200 rounded-xl p-2">
-                            {notifications.map((notif) => (
-                              <button
-                                key={notif.id}
-                                onClick={() => setSelectedNotification(notif)}
-                                className={`w-full p-4 rounded-lg text-left transition-colors ${
-                                  selectedNotification?.id === notif.id
-                                    ? 'bg-apple-blue text-white'
-                                    : 'bg-gray-50 hover:bg-gray-100 text-gray-900'
-                                }`}
-                              >
-                                <h4 className="font-semibold">{notif.title}</h4>
-                                <p className={`text-sm mt-1 ${selectedNotification?.id === notif.id ? 'text-blue-100' : 'text-gray-600'}`}>
-                                  {truncateText(notif.body, 60)}
-                                </p>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          User Group
-                        </label>
-                        <div className="relative">
-                          <select
-                            value={selectedUserGroup}
-                            onChange={(e) => setSelectedUserGroup(e.target.value)}
-                            className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent appearance-none pr-10"
-                          >
-                            <option value="">All Users (default)</option>
-                            {loadingUserGroups ? (
-                              <option disabled>Loading groups...</option>
-                            ) : (
-                              userGroups
-                                .filter((group) => {
-                                  const displayName = (group.metaName || group.name || group.id).toLowerCase();
-                                  return displayName !== 'all users';
-                                })
-                                .map((group) => (
-                                  <option key={group.id} value={group.id}>
-                                    {group.metaName || group.name || group.id} {group.tokens ? `(${group.tokens.length} users)` : ''}
-                                  </option>
-                                ))
-                            )}
-                          </select>
-                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                        </div>
-                        <p className="mt-2 text-sm text-gray-500">
-                          Select a user group to target specific users, or leave as "All Users" to send to everyone
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Schedule Date <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="date"
-                            value={sendAtDate}
-                            onChange={(e) => setSendAtDate(e.target.value)}
-                            min={minDateTime.date}
-                            required
-                            className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Schedule Time <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="time"
-                            value={sendAtTime}
-                            onChange={(e) => setSendAtTime(e.target.value)}
-                            min={sendAtDate === minDateTime.date ? minDateTime.time : undefined}
-                            required
-                            className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent"
-                          />
-                        </div>
+                  {activeNotification && (
+                    <div className="bg-accent-light/50 border border-accent/20 rounded-xl p-4 space-y-2">
+                      <p className="text-sm font-semibold text-ink">{activeNotification.title}</p>
+                      <div className="flex items-center gap-2 text-xs text-gray-600">
+                        <Users className="w-3.5 h-3.5 text-accent" />
+                        <span>Audience: <strong>{formatUserGroup(activeNotification.userGroup)}</strong></span>
                       </div>
                     </div>
                   )}
 
-                  {step === 'new' && (
-                    <div className="space-y-6">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Title <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={title}
-                          onChange={(e) => setTitle(e.target.value)}
-                          placeholder="Enter notification title"
-                          required
-                          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Body <span className="text-red-500">*</span>
-                        </label>
-                        <textarea
-                          value={body}
-                          onChange={(e) => setBody(e.target.value)}
-                          rows={4}
-                          placeholder="Enter notification body"
-                          required
-                          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent resize-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Optional Data (JSON)
-                        </label>
-                        <textarea
-                          value={jsonData}
-                          onChange={(e) => handleJsonChange(e.target.value)}
-                          rows={4}
-                          placeholder='{"key": "value"}'
-                          className={`w-full px-4 py-3 bg-white border rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent resize-none font-mono text-sm ${
-                            jsonError ? 'border-red-300 focus:ring-red-500' : 'border-gray-200'
-                          }`}
-                        />
-                        {jsonError && (
-                          <p className="mt-2 text-sm text-red-600">{jsonError}</p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          User Group
-                        </label>
-                        <div className="relative">
-                          <select
-                            value={selectedUserGroup}
-                            onChange={(e) => setSelectedUserGroup(e.target.value)}
-                            className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent appearance-none pr-10"
-                          >
-                            <option value="">All Users (default)</option>
-                            {loadingUserGroups ? (
-                              <option disabled>Loading groups...</option>
-                            ) : (
-                              userGroups
-                                .filter((group) => {
-                                  const displayName = (group.metaName || group.name || group.id).toLowerCase();
-                                  return displayName !== 'all users';
-                                })
-                                .map((group) => (
-                                  <option key={group.id} value={group.id}>
-                                    {group.metaName || group.name || group.id} {group.tokens ? `(${group.tokens.length} users)` : ''}
-                                  </option>
-                                ))
-                            )}
-                          </select>
-                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                        </div>
-                        <p className="mt-2 text-sm text-gray-500">
-                          Select a user group to target specific users, or leave as "All Users" to send to everyone
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Schedule Date <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="date"
-                            value={sendAtDate}
-                            onChange={(e) => setSendAtDate(e.target.value)}
-                            min={minDateTime.date}
-                            required
-                            className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Schedule Time <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="time"
-                            value={sendAtTime}
-                            onChange={(e) => setSendAtTime(e.target.value)}
-                            min={sendAtDate === minDateTime.date ? minDateTime.time : undefined}
-                            required
-                            className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent"
-                          />
-                        </div>
-                      </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label-field">Date</label>
+                      <input
+                        type="date"
+                        value={sendAtDate}
+                        onChange={(e) => setSendAtDate(e.target.value)}
+                        min={minDateTime.date}
+                        className="input-field"
+                      />
                     </div>
-                  )}
+                    <div>
+                      <label className="label-field">Time</label>
+                      <input
+                        type="time"
+                        value={sendAtTime}
+                        onChange={(e) => setSendAtTime(e.target.value)}
+                        min={sendAtDate === minDateTime.date ? minDateTime.time : undefined}
+                        className="input-field"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {(step === 'new' || step === 'existing') && (
-                  <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3 rounded-b-2xl">
-                    <button
-                      onClick={onClose}
-                      disabled={isSaving}
-                      className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors font-medium disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={step === 'new' ? handleScheduleNew : handleScheduleExisting}
-                      disabled={isSaving || !!jsonError || (step === 'existing' && !selectedNotification) || !sendAtDate || !sendAtTime}
-                      className="px-6 py-2 bg-apple-blue text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isSaving ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Scheduling...
-                        </>
-                      ) : (
-                        <>
-                          <Calendar className="w-4 h-4" />
-                          Schedule Notification
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
+                <div className="px-6 py-4 border-t border-gray-100 bg-surface-muted flex justify-end gap-3">
+                  <LoadingButton variant="secondary" onClick={onClose} disabled={isSaving}>
+                    Cancel
+                  </LoadingButton>
+                  <LoadingButton
+                    variant="primary"
+                    onClick={handleSchedule}
+                    loading={isSaving}
+                    loadingText="Scheduling..."
+                    disabled={!activeNotification || !sendAtDate || !sendAtTime}
+                    icon={<Calendar className="w-4 h-4" />}
+                  >
+                    Confirm Schedule
+                  </LoadingButton>
+                </div>
               </div>
             </motion.div>
           </>
@@ -550,4 +255,3 @@ const ScheduleNotificationModal = ({
 };
 
 export default ScheduleNotificationModal;
-

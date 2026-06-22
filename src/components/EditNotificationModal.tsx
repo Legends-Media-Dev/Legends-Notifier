@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Save, Loader2 } from 'lucide-react';
-import { Notification, updateNotification, UpdateNotificationPayload } from '../lib/api';
+import { X, ChevronDown, Calendar, Info } from 'lucide-react';
+import { Notification, updateNotification, UpdateNotificationPayload, fetchUserGroups, UserGroup } from '../lib/api';
+import { canSchedule } from '../lib/notificationUtils';
+import LoadingButton from './LoadingButton';
+import ModalBusyOverlay from './ModalBusyOverlay';
 import Toast from './Toast';
 
 interface EditNotificationModalProps {
@@ -9,6 +12,8 @@ interface EditNotificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  onSavedAndSchedule?: (notificationId: string) => void;
+  showGuidanceBanner?: boolean;
 }
 
 const EditNotificationModal = ({
@@ -16,81 +21,64 @@ const EditNotificationModal = ({
   isOpen,
   onClose,
   onSuccess,
+  onSavedAndSchedule,
+  showGuidanceBanner = false,
 }: EditNotificationModalProps) => {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [jsonData, setJsonData] = useState('');
-  const [jsonError, setJsonError] = useState('');
+  const [selectedUserGroup, setSelectedUserGroup] = useState('allUsers');
+  const [userGroups, setUserGroups] = useState<UserGroup[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveMode, setSaveMode] = useState<'save' | 'schedule'>('save');
   const [toast, setToast] = useState({ isVisible: false, message: '', type: 'success' as 'success' | 'error' | 'info' });
+
+  const canScheduleDraft = notification ? canSchedule(notification) : false;
 
   useEffect(() => {
     if (notification && isOpen) {
       setTitle(notification.title || '');
       setBody(notification.body || '');
-      setJsonData(notification.data ? JSON.stringify(notification.data, null, 2) : '');
-      setJsonError('');
+      setSelectedUserGroup(notification.userGroup || 'allUsers');
+      setSaveMode('save');
+      loadUserGroups();
     }
   }, [notification, isOpen]);
 
-  const validateJson = (jsonString: string): boolean => {
-    if (!jsonString.trim()) return true;
+  const loadUserGroups = async () => {
     try {
-      JSON.parse(jsonString);
-      return true;
-    } catch {
-      return false;
+      setLoadingGroups(true);
+      const data = await fetchUserGroups();
+      setUserGroups(Array.isArray(data) ? data : []);
+    } finally {
+      setLoadingGroups(false);
     }
   };
 
-  const handleJsonChange = (value: string) => {
-    setJsonData(value);
-    if (value.trim() && !validateJson(value)) {
-      setJsonError('Invalid JSON format');
-    } else {
-      setJsonError('');
-    }
-  };
-
-  const handleSave = async () => {
-    if (jsonError) {
-      showToast('Please fix JSON errors before saving', 'error');
-      return;
-    }
-
-    if (!title.trim() || !body.trim()) {
-      showToast('Title and body are required', 'error');
-      return;
-    }
-
-    if (!notification?.id) {
-      showToast('Cannot save: notification ID not found', 'error');
-      return;
-    }
+  const handleSave = async (mode: 'save' | 'schedule') => {
+    if (!title.trim() || !body.trim() || !notification?.id) return;
 
     try {
+      setSaveMode(mode);
       setIsSaving(true);
-
       const updatePayload: UpdateNotificationPayload = {
         notificationId: notification.id,
         title: title.trim(),
         body: body.trim(),
-        data: jsonData.trim() ? JSON.parse(jsonData) : {},
+        data: {},
+        userGroup: selectedUserGroup,
       };
-
       await updateNotification(updatePayload);
-
-      showToast('Notification saved successfully!', 'success');
-
-      if (onSuccess) {
-        onSuccess();
-      }
+      showToast(mode === 'schedule' ? 'Saved — pick a send time' : 'Campaign updated', 'success');
+      onSuccess?.();
       setTimeout(() => {
         onClose();
-      }, 800);
-    } catch (error) {
-      showToast('Failed to save notification', 'error');
-      console.error('Error:', error);
+        if (mode === 'schedule') {
+          onSavedAndSchedule?.(notification.id);
+        }
+      }, 600);
+    } catch {
+      showToast('Failed to save', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -107,116 +95,97 @@ const EditNotificationModal = ({
       <AnimatePresence>
         {isOpen && (
           <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 bg-ink/60 backdrop-blur-sm z-40" />
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={onClose}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
-                  <h2 className="text-xl font-semibold text-gray-900">Edit Notification</h2>
-                  <button
-                    onClick={onClose}
-                    className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+              <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden relative">
+                <ModalBusyOverlay show={isSaving} label="Saving changes..." />
+                <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-ink">Edit Campaign</h2>
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      {showGuidanceBanner ? 'Update your copy, then save or schedule' : 'Make changes to this draft'}
+                    </p>
+                  </div>
+                  <button onClick={onClose} disabled={isSaving} className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg disabled:opacity-50"><X className="w-5 h-5" /></button>
                 </div>
 
-                <div className="px-6 py-6 space-y-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Title <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Enter notification title"
-                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent transition-all"
-                    />
-                  </div>
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                  {showGuidanceBanner && (
+                    <div className="flex gap-3 bg-accent-light/60 border border-accent/20 rounded-xl px-4 py-3">
+                      <Info className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                      <p className="text-sm text-accent-hover leading-relaxed">
+                        This is a copy of a sent campaign. Update the title or message so subscribers don&apos;t get the exact same notification twice.
+                      </p>
+                    </div>
+                  )}
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Body <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      value={body}
-                      onChange={(e) => setBody(e.target.value)}
-                      rows={4}
-                      placeholder="Enter notification body"
-                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent transition-all resize-none"
-                    />
+                    <label className="label-field">Title</label>
+                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="input-field" autoFocus={showGuidanceBanner} />
                   </div>
-
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Optional Data (JSON)
-                    </label>
-                    <textarea
-                      value={jsonData}
-                      onChange={(e) => handleJsonChange(e.target.value)}
-                      rows={4}
-                      placeholder='{"key": "value"}'
-                      className={`w-full px-4 py-3 bg-white border rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue focus:border-transparent transition-all resize-none font-mono text-sm ${
-                        jsonError ? 'border-red-300 focus:ring-red-500' : 'border-gray-200'
-                      }`}
-                    />
-                    {jsonError && (
-                      <p className="mt-2 text-sm text-red-600">{jsonError}</p>
-                    )}
+                    <label className="label-field">Message</label>
+                    <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} className="input-field resize-none" />
+                  </div>
+                  <div>
+                    <label className="label-field">Audience</label>
+                    <div className="relative">
+                      <select
+                        value={selectedUserGroup}
+                        onChange={(e) => setSelectedUserGroup(e.target.value)}
+                        disabled={loadingGroups}
+                        className="input-field appearance-none pr-10"
+                      >
+                        <option value="allUsers">All Users</option>
+                        {userGroups
+                          .filter((g) => (g.metaName || g.name || g.id).toLowerCase() !== 'all users')
+                          .map((g) => (
+                            <option key={g.id} value={g.id}>{g.metaName || g.name || g.id}</option>
+                          ))}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    </div>
                   </div>
                 </div>
 
-                <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-between items-center rounded-b-2xl">
-                  <button
-                    onClick={onClose}
-                    disabled={isSaving}
-                    className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors font-medium disabled:opacity-50"
-                  >
+                <div className="px-6 py-4 border-t border-gray-100 bg-surface-muted flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+                  <LoadingButton variant="secondary" onClick={onClose} disabled={isSaving}>
                     Cancel
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={isSaving || !!jsonError || !title.trim() || !body.trim()}
-                    className="px-6 py-2 bg-apple-blue text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  </LoadingButton>
+                  <LoadingButton
+                    variant="secondary"
+                    onClick={() => handleSave('save')}
+                    loading={isSaving && saveMode === 'save'}
+                    loadingText="Saving..."
+                    disabled={!title.trim() || !body.trim() || isSaving}
                   >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4" />
-                        Save
-                      </>
-                    )}
-                  </button>
+                    Save
+                  </LoadingButton>
+                  {canScheduleDraft && (
+                    <LoadingButton
+                      variant="primary"
+                      onClick={() => handleSave('schedule')}
+                      loading={isSaving && saveMode === 'schedule'}
+                      loadingText="Saving..."
+                      disabled={!title.trim() || !body.trim() || isSaving}
+                      icon={<Calendar className="w-4 h-4" />}
+                    >
+                      Save & Schedule
+                    </LoadingButton>
+                  )}
                 </div>
               </div>
             </motion.div>
           </>
         )}
       </AnimatePresence>
-
-      <Toast
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.isVisible}
-        onClose={() => setToast({ ...toast, isVisible: false })}
-      />
+      <Toast message={toast.message} type={toast.type} isVisible={toast.isVisible} onClose={() => setToast({ ...toast, isVisible: false })} />
     </>
   );
 };
