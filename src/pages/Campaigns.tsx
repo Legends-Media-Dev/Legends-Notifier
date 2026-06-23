@@ -3,6 +3,8 @@ import {
   Send,
   Loader2,
   Calendar,
+  CalendarDays,
+  LayoutList,
   Plus,
   Pencil,
   Copy,
@@ -17,6 +19,7 @@ import {
   Notification,
   deleteNotification,
   duplicateNotification,
+  updateOrCancelScheduledNotification,
 } from '../lib/api';
 import { formatDate, truncateText } from '../lib/utils';
 import {
@@ -41,8 +44,10 @@ import DuplicateSuccessModal from '../components/DuplicateSuccessModal';
 import LoadingButton from '../components/LoadingButton';
 import PageLayout from '../components/PageLayout';
 import Toast from '../components/Toast';
+import CampaignCalendar from '../components/CampaignCalendar';
 
 type TabType = 'all' | 'drafts' | 'scheduled' | 'sent';
+type ViewMode = 'list' | 'calendar';
 
 const TABS: { id: TabType; label: string; icon: typeof Megaphone }[] = [
   { id: 'all', label: 'All', icon: Megaphone },
@@ -60,6 +65,8 @@ const Campaigns = () => {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -124,9 +131,45 @@ const Campaigns = () => {
     sent: filterByTab(notifications, 'sent').length,
   }), [notifications]);
 
+  const calendarNotifications = useMemo(() => {
+    let list = filterByTab(notifications, 'scheduled');
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (n) => n.title.toLowerCase().includes(q) || n.body.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [notifications, searchQuery]);
+
   const handleRefresh = () => loadNotifications();
 
-  const isPageActionPending = duplicatingId !== null || deletingId !== null;
+  const isPageActionPending =
+    duplicatingId !== null || deletingId !== null || reschedulingId !== null;
+
+  const handleCalendarReschedule = async (notificationId: string, sendAt: string) => {
+    const previous = notifications.find((n) => n.id === notificationId);
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notificationId ? { ...n, sendAt } : n))
+    );
+    try {
+      setReschedulingId(notificationId);
+      await updateOrCancelScheduledNotification({
+        notificationId,
+        updates: { sendAt },
+      });
+      showToast('Campaign rescheduled', 'success');
+    } catch {
+      if (previous) {
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === notificationId ? previous : n))
+        );
+      }
+      showToast('Failed to reschedule campaign', 'error');
+    } finally {
+      setReschedulingId(null);
+    }
+  };
 
   const openScheduleModal = (notification?: Notification | null) => {
     setSchedulePreselect(notification ?? null);
@@ -266,39 +309,84 @@ const Campaigns = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search campaigns..."
+                placeholder={viewMode === 'calendar' ? 'Search scheduled campaigns...' : 'Search campaigns...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="input-field pl-10 w-full"
               />
             </div>
-            <div className="flex gap-1 border-b border-gray-200 lg:border-0 lg:pb-0 shrink-0">
-              {TABS.map((tab) => {
-                const count = tabCounts[tab.id];
-                const isActive = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
-                      isActive
-                        ? 'border-accent text-accent'
-                        : 'border-transparent text-gray-500 hover:text-ink-light'
-                    }`}
-                  >
-                    {tab.label}
-                    <span className={`ml-1.5 text-xs ${isActive ? 'text-accent/70' : 'text-gray-400'}`}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="flex items-center gap-1 bg-surface-muted rounded-xl p-1">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    viewMode === 'list'
+                      ? 'bg-white text-accent shadow-sm'
+                      : 'text-gray-500 hover:text-ink'
+                  }`}
+                >
+                  <LayoutList className="w-4 h-4" />
+                  List
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('calendar')}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    viewMode === 'calendar'
+                      ? 'bg-white text-accent shadow-sm'
+                      : 'text-gray-500 hover:text-ink'
+                  }`}
+                >
+                  <CalendarDays className="w-4 h-4" />
+                  Calendar
+                </button>
+              </div>
+              {viewMode === 'list' && (
+                <div className="flex gap-1 border-b border-gray-200 lg:border-0 lg:pb-0">
+                  {TABS.map((tab) => {
+                    const count = tabCounts[tab.id];
+                    const isActive = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
+                          isActive
+                            ? 'border-accent text-accent'
+                            : 'border-transparent text-gray-500 hover:text-ink-light'
+                        }`}
+                      >
+                        {tab.label}
+                        <span className={`ml-1.5 text-xs ${isActive ? 'text-accent/70' : 'text-gray-400'}`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
           {loading ? (
             <div className="flex items-center justify-center py-24">
               <Loader2 className="w-8 h-8 text-accent animate-spin" />
+            </div>
+          ) : viewMode === 'calendar' ? (
+            <div className="relative">
+              {isRefreshing && (
+                <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] z-10 flex items-center justify-center rounded-2xl">
+                  <Loader2 className="w-8 h-8 text-accent animate-spin" />
+                </div>
+              )}
+              <CampaignCalendar
+                notifications={calendarNotifications}
+                reschedulingId={reschedulingId}
+                onReschedule={handleCalendarReschedule}
+                onSelect={openDetail}
+                onError={(message) => showToast(message, 'error')}
+              />
             </div>
           ) : filteredNotifications.length === 0 ? (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-card p-16 text-center">
