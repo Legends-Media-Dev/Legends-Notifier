@@ -13,9 +13,12 @@ import {
   Clock,
   CheckCircle2,
   FileEdit,
+  CircleDollarSign,
 } from 'lucide-react';
 import {
   fetchNotifications,
+  fetchCampaignAttribution,
+  CampaignAttributionResponse,
   Notification,
   deleteNotification,
   duplicateNotification,
@@ -45,9 +48,19 @@ import LoadingButton from '../components/LoadingButton';
 import PageLayout from '../components/PageLayout';
 import Toast from '../components/Toast';
 import CampaignCalendar from '../components/CampaignCalendar';
+import CampaignImpactSummary from '../components/CampaignImpactSummary';
 
 type TabType = 'all' | 'drafts' | 'scheduled' | 'sent';
 type ViewMode = 'list' | 'calendar';
+
+function formatCurrency(amount: number, currency = 'USD'): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
 
 const TABS: { id: TabType; label: string; icon: typeof Megaphone }[] = [
   { id: 'all', label: 'All', icon: Megaphone },
@@ -67,6 +80,9 @@ const Campaigns = () => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [reschedulingId, setReschedulingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [attributionData, setAttributionData] =
+    useState<CampaignAttributionResponse | null>(null);
+  const [attributionLoading, setAttributionLoading] = useState(true);
 
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -86,6 +102,7 @@ const Campaigns = () => {
 
   useEffect(() => {
     loadNotifications();
+    loadAttribution();
   }, []);
 
   const loadNotifications = async () => {
@@ -109,6 +126,18 @@ const Campaigns = () => {
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ isVisible: true, message, type });
+  };
+
+  const loadAttribution = async () => {
+    try {
+      setAttributionLoading(true);
+      const data = await fetchCampaignAttribution(90);
+      setAttributionData(data);
+    } catch {
+      showToast('Campaign sales impact is temporarily unavailable', 'error');
+    } finally {
+      setAttributionLoading(false);
+    }
   };
 
   const filteredNotifications = useMemo(() => {
@@ -142,7 +171,21 @@ const Campaigns = () => {
     return list;
   }, [notifications, searchQuery]);
 
-  const handleRefresh = () => loadNotifications();
+  const attributionByNotification = useMemo(
+    () =>
+      new Map(
+        (attributionData?.campaigns ?? []).map((campaign) => [
+          campaign.notificationId,
+          campaign,
+        ])
+      ),
+    [attributionData]
+  );
+
+  const handleRefresh = () => {
+    loadNotifications();
+    loadAttribution();
+  };
 
   const isPageActionPending =
     duplicatingId !== null || deletingId !== null || reschedulingId !== null;
@@ -304,6 +347,11 @@ const Campaigns = () => {
           </>
         }
       >
+          <CampaignImpactSummary
+            data={attributionData}
+            loading={attributionLoading}
+          />
+
           <div className="flex flex-col lg:flex-row lg:items-center gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -430,10 +478,10 @@ const Campaigns = () => {
                 </div>
               )}
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[920px]">
+                <table className="w-full min-w-[1060px]">
                   <thead>
                     <tr className="border-b border-gray-200 bg-surface-muted/60">
-                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-[36%]">
+                      <th className="text-left px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-[31%]">
                         Campaign
                       </th>
                       <th className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -444,6 +492,9 @@ const Campaigns = () => {
                       </th>
                       <th className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                         Recipients
+                      </th>
+                      <th className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        App sales after push
                       </th>
                       <th className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                         Date
@@ -459,6 +510,7 @@ const Campaigns = () => {
                       const status = normalizeStatus(notification.status);
                       const dateInfo = getDateLabel(notification, status);
                       const recipientCount = getTotalRecipientCount(notification);
+                      const attribution = attributionByNotification.get(notification.id);
 
                       return (
                         <tr
@@ -492,6 +544,25 @@ const Campaigns = () => {
                               <span className="text-sm font-semibold text-ink tabular-nums">
                                 {formatRecipientCount(recipientCount)}
                               </span>
+                            ) : (
+                              <span className="text-sm text-gray-300">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            {attribution ? (
+                              <div>
+                                <p className="text-sm font-bold text-ink tabular-nums flex items-center gap-1.5">
+                                  <CircleDollarSign className="w-3.5 h-3.5 text-accent" />
+                                  {formatCurrency(
+                                    attribution.mobileAppRevenue,
+                                    attributionData?.currency
+                                  )}
+                                </p>
+                                <p className="text-[11px] text-gray-400 mt-0.5">
+                                  {attribution.mobileAppOrders} app order{attribution.mobileAppOrders === 1 ? '' : 's'}
+                                  {!attribution.windowComplete && ' · live'}
+                                </p>
+                              </div>
                             ) : (
                               <span className="text-sm text-gray-300">—</span>
                             )}
@@ -596,6 +667,13 @@ const Campaigns = () => {
         isDuplicating={duplicatingId === selectedNotification?.id}
         isDeleting={deletingId === selectedNotification?.id}
         isActionPending={duplicatingId !== null || deletingId !== null}
+        attribution={
+          selectedNotification
+            ? attributionByNotification.get(selectedNotification.id)
+            : undefined
+        }
+        attributionCurrency={attributionData?.currency}
+        attributionWindowHours={attributionData?.attributionWindowHours}
       />
 
       <SendNotificationModal

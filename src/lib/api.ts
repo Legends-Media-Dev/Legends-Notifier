@@ -793,6 +793,506 @@ export const fetchDashboardStats = async (
   return response.data;
 };
 
+export interface CampaignAttribution {
+  notificationId: string;
+  title: string;
+  sentAt: string;
+  windowStart: string;
+  windowEnd: string;
+  windowComplete: boolean;
+  recipientCount: number;
+  mobileAppRevenue: number;
+  mobileAppOrders: number;
+}
+
+export interface CampaignAttributionResponse {
+  success: boolean;
+  generatedAt: string;
+  currency: string;
+  salesChannel: string;
+  attributionWindowHours: number;
+  attributionModel: 'last_touch';
+  lookbackDays: number;
+  truncated: boolean;
+  definition?: string;
+  campaigns: CampaignAttribution[];
+}
+
+export const fetchCampaignAttribution = async (
+  days = 90
+): Promise<CampaignAttributionResponse> => {
+  const response = await api.get<CampaignAttributionResponse>(
+    '/fetchCampaignAttributionHandler',
+    { params: { days } }
+  );
+  return response.data;
+};
+
+// ─── Shopify Admin (sales / products / collections) ───────────────────────────
+
+export type ShopifySalesPeriod =
+  | 'today'
+  | 'yesterday'
+  | 'last_7'
+  | 'last_30'
+  | 'last_90'
+  | 'last_12_months'
+  | 'current_month'
+  | 'custom';
+
+export interface ShopifySalesChartBucket {
+  date: string;
+  label: string;
+  sales: number;
+  orders: number;
+}
+
+export interface ShopifyRecentOrder {
+  id: string;
+  name: string;
+  createdAt: string;
+  total: number;
+  currency: string;
+  financialStatus: string | null;
+  fulfillmentStatus: string | null;
+  channel: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+}
+
+export interface ShopifySalesResponse {
+  success: boolean;
+  period: {
+    type: string;
+    days: number | null;
+    label: string;
+    dateRangeLabel: string;
+    comparisonLabel: string | null;
+    start: string;
+    end: string;
+  };
+  sales: {
+    currency: string;
+    source: 'orders' | 'unavailable';
+    notice: string | null;
+    totalSales: number;
+    orders: number;
+    averageOrderValue: number;
+    salesChange: number | null;
+    ordersChange: number | null;
+    aovChange: number | null;
+    truncated: boolean;
+  };
+  chart: {
+    granularity: 'hour' | 'day' | 'month';
+    buckets: ShopifySalesChartBucket[];
+  };
+  recentOrders: ShopifyRecentOrder[];
+}
+
+export interface FetchShopifySalesParams {
+  period?: ShopifySalesPeriod;
+  start?: string;
+  end?: string;
+}
+
+export const fetchShopifySales = async (
+  params: FetchShopifySalesParams = {}
+): Promise<ShopifySalesResponse> => {
+  const response = await api.get<ShopifySalesResponse>('/fetchShopifySalesHandler', {
+    params: {
+      period: params.period ?? 'last_30',
+      start: params.start,
+      end: params.end,
+    },
+  });
+  return response.data;
+};
+
+export interface ShopifyProduct {
+  id: string;
+  title: string;
+  handle: string;
+  status: string;
+  vendor: string | null;
+  productType: string | null;
+  tags: string[];
+  totalInventory: number;
+  variantCount: number;
+  priceMin: number | null;
+  priceMax: number | null;
+  image: string | null;
+  images: string[];
+  updatedAt: string | null;
+  createdAt: string | null;
+  onlineStoreUrl: string | null;
+}
+
+export interface ShopifyProductsResponse {
+  success: boolean;
+  products: ShopifyProduct[];
+  pageInfo: {
+    hasNextPage: boolean;
+    endCursor: string | null;
+  };
+  count: number;
+}
+
+export interface FetchShopifyProductsParams {
+  cursor?: string | null;
+  search?: string;
+  status?: 'ALL' | 'ACTIVE' | 'DRAFT' | 'ARCHIVED';
+  limit?: number;
+}
+
+export const fetchShopifyProducts = async (
+  params: FetchShopifyProductsParams = {}
+): Promise<ShopifyProductsResponse> => {
+  const response = await api.get<ShopifyProductsResponse>('/fetchShopifyProductsHandler', {
+    params: {
+      cursor: params.cursor || undefined,
+      search: params.search || undefined,
+      status: params.status ?? 'ALL',
+      limit: params.limit ?? 50,
+    },
+  });
+  return response.data;
+};
+
+export interface ShopifyAdminCollection {
+  id: string;
+  title: string;
+  handle: string;
+  description: string;
+  image: string | null;
+  productsCount: number | null;
+  sortOrder: string | null;
+  updatedAt: string | null;
+  ruleSet: {
+    appliedDisjunctively: boolean;
+    rulesCount: number;
+  } | null;
+  type: 'smart' | 'custom';
+}
+
+export interface ShopifyCollectionsResponse {
+  success: boolean;
+  collections: ShopifyAdminCollection[];
+  pageInfo: {
+    hasNextPage: boolean;
+    endCursor: string | null;
+  };
+  count: number;
+}
+
+export interface FetchShopifyCollectionsParams {
+  cursor?: string | null;
+  search?: string;
+  limit?: number;
+}
+
+export const fetchShopifyAdminCollections = async (
+  params: FetchShopifyCollectionsParams = {}
+): Promise<ShopifyCollectionsResponse> => {
+  const response = await api.get<ShopifyCollectionsResponse>(
+    '/fetchShopifyCollectionsHandler',
+    {
+      params: {
+        cursor: params.cursor || undefined,
+        search: params.search || undefined,
+        limit: params.limit ?? 50,
+      },
+    }
+  );
+  return response.data;
+};
+
+// ─── Shopify store insights (overview / orders / customers / etc.) ────────────
+
+export type ShopifyStoreResource =
+  | 'overview'
+  | 'orders'
+  | 'customers'
+  | 'discounts'
+  | 'checkouts'
+  | 'inventory'
+  | 'refunds'
+  | 'top_products';
+
+export interface ShopifyStoreOverviewResponse {
+  success: boolean;
+  health: {
+    totalProducts: number;
+    activeProducts: number;
+    draftProducts: number;
+    totalCollections: number;
+    totalCustomers: number;
+    unfulfilledOrders: number;
+    lowStockThreshold: number;
+    lowStockCount: number;
+    outOfStockCount: number;
+  };
+  lowStock: Array<{
+    id: string;
+    title: string;
+    sku: string | null;
+    inventoryQuantity: number;
+    productId: string | null;
+    productTitle: string | null;
+    productHandle: string | null;
+    productStatus: string | null;
+  }>;
+  outOfStock: Array<{
+    id: string;
+    title: string;
+    sku: string | null;
+    inventoryQuantity: number;
+    productId: string | null;
+    productTitle: string | null;
+    productHandle: string | null;
+    productStatus: string | null;
+  }>;
+  recentUnfulfilled: Array<{
+    id: string;
+    name: string;
+    createdAt: string;
+    fulfillmentStatus: string | null;
+    financialStatus: string | null;
+    total: number;
+    currency: string;
+    customerName: string | null;
+    customerEmail: string | null;
+  }>;
+}
+
+export interface ShopifyStoreOrder {
+  id: string;
+  name: string;
+  createdAt: string;
+  financialStatus: string | null;
+  fulfillmentStatus: string | null;
+  note: string | null;
+  tags: string[];
+  channel: string | null;
+  customer: { id: string; name: string | null; email: string | null; phone: string | null } | null;
+  total: number;
+  subtotal: number;
+  shipping: number;
+  tax: number;
+  refunded: number;
+  currency: string;
+  shippingLocation: string | null;
+  lineItems: Array<{
+    id: string;
+    title: string;
+    quantity: number;
+    sku: string | null;
+    variantTitle: string | null;
+    total: number;
+    image: string | null;
+  }>;
+}
+
+export interface ShopifyStoreOrdersResponse {
+  success: boolean;
+  orders: ShopifyStoreOrder[];
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  count: number;
+}
+
+export interface ShopifyStoreCustomer {
+  id: string;
+  displayName: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  numberOfOrders: number;
+  amountSpent: number;
+  currency: string;
+  location: string | null;
+  lastOrder: {
+    id: string;
+    name: string;
+    createdAt: string;
+    total: number;
+    currency: string;
+  } | null;
+}
+
+export interface ShopifyStoreCustomersResponse {
+  success: boolean;
+  customers: ShopifyStoreCustomer[];
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  count: number;
+}
+
+export interface ShopifyStoreDiscount {
+  id: string;
+  type: 'code' | 'automatic';
+  typename: string | null;
+  title: string;
+  status: string | null;
+  summary: string | null;
+  valueLabel: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  usageCount: number;
+  usageLimit: number | null;
+  codes: string[];
+}
+
+export interface ShopifyStoreDiscountsResponse {
+  success: boolean;
+  discounts: ShopifyStoreDiscount[];
+  count: number;
+}
+
+export interface ShopifyStoreCheckout {
+  id: string;
+  name: string | null;
+  createdAt: string;
+  updatedAt: string;
+  recoveryUrl: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  total: number;
+  currency: string;
+  itemCount: number;
+  lineItems: Array<{
+    title: string;
+    quantity: number;
+    variantTitle: string | null;
+    unitPrice: number;
+  }>;
+}
+
+export interface ShopifyStoreCheckoutsResponse {
+  success: boolean;
+  checkouts: ShopifyStoreCheckout[];
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  count: number;
+}
+
+export interface ShopifyStoreInventoryItem {
+  id: string;
+  title: string;
+  sku: string | null;
+  barcode: string | null;
+  inventoryQuantity: number;
+  inventoryPolicy: string | null;
+  price: number;
+  updatedAt: string | null;
+  image: string | null;
+  stockStatus: 'out' | 'low' | 'ok';
+  product: {
+    id: string | null;
+    title: string | null;
+    handle: string | null;
+    status: string | null;
+    vendor: string | null;
+    productType: string | null;
+  };
+}
+
+export interface ShopifyStoreInventoryResponse {
+  success: boolean;
+  items: ShopifyStoreInventoryItem[];
+  lowStockThreshold: number;
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  count: number;
+}
+
+export interface ShopifyStoreRefund {
+  id: string;
+  createdAt: string;
+  note: string | null;
+  amount: number;
+  currency: string;
+  orderId: string;
+  orderName: string;
+  customerName: string | null;
+  customerEmail: string | null;
+  lineItems: Array<{
+    title: string;
+    quantity: number;
+    sku: string | null;
+    variantTitle: string | null;
+  }>;
+}
+
+export interface ShopifyStoreRefundsResponse {
+  success: boolean;
+  period: { label: string; start: string; end: string; dateRangeLabel: string };
+  summary: {
+    totalRefunded: number;
+    refundCount: number;
+    currency: string;
+    truncated: boolean;
+  };
+  refunds: ShopifyStoreRefund[];
+  count: number;
+}
+
+export interface ShopifyTopProduct {
+  productId: string | null;
+  title: string;
+  handle: string | null;
+  image: string | null;
+  unitsSold: number;
+  revenue: number;
+  currency: string;
+  skus: string[];
+}
+
+export interface ShopifyTopProductsResponse {
+  success: boolean;
+  period: { label: string; start: string; end: string; dateRangeLabel: string };
+  products: ShopifyTopProduct[];
+  currency: string;
+  truncated: boolean;
+  count: number;
+}
+
+export interface FetchShopifyStoreParams {
+  resource: ShopifyStoreResource;
+  cursor?: string | null;
+  search?: string;
+  limit?: number;
+  status?: string;
+  fulfillment?: string;
+  financial?: string;
+  stock?: string;
+  period?: ShopifySalesPeriod | string;
+  start?: string;
+  end?: string;
+}
+
+export const fetchShopifyStore = async <T = unknown>(
+  params: FetchShopifyStoreParams
+): Promise<T> => {
+  const response = await api.get<T>('/fetchShopifyStoreHandler', {
+    params: {
+      resource: params.resource,
+      cursor: params.cursor || undefined,
+      search: params.search || undefined,
+      limit: params.limit,
+      status: params.status,
+      fulfillment: params.fulfillment,
+      financial: params.financial,
+      stock: params.stock,
+      period: params.period,
+      start: params.start,
+      end: params.end,
+    },
+  });
+  return response.data;
+};
+
 export interface PushCategorySnippetPayload {
   docId?: string;
   id?: string;

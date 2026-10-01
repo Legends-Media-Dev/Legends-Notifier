@@ -14,6 +14,16 @@ import {
   Home,
   ImageIcon,
   Zap,
+  Store,
+  BarChart3,
+  Package,
+  FolderOpen,
+  ShoppingCart,
+  Boxes,
+  Users as ShopifyUsersIcon,
+  Percent,
+  RotateCcw,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -25,6 +35,7 @@ const Navbar = () => {
   const isAudienceActive = location.pathname === '/users' || location.pathname === '/segments';
   const isAppSettingsActive = location.pathname.startsWith('/app-settings');
   const isHomeActive = location.pathname.startsWith('/app-settings/home');
+  const isShopifyActive = location.pathname.startsWith('/shopify');
 
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [openSubDropdown, setOpenSubDropdown] = useState<string | null>(null);
@@ -41,6 +52,9 @@ const Navbar = () => {
       setOpenSubDropdown('Home');
     } else if (location.pathname.startsWith('/app-settings')) {
       setOpenDropdown('App Settings');
+      setOpenSubDropdown(null);
+    } else if (location.pathname.startsWith('/shopify')) {
+      setOpenDropdown('Shopify');
       setOpenSubDropdown(null);
     } else if (location.pathname === '/users' || location.pathname === '/segments') {
       setOpenDropdown('Audience');
@@ -91,6 +105,23 @@ const Navbar = () => {
       ],
     },
     {
+      label: 'Shopify',
+      icon: Store,
+      isDropdown: true,
+      subItems: [
+        { path: '/shopify/overview', label: 'Overview', icon: Activity },
+        { path: '/shopify/sales', label: 'Sales & reporting', icon: BarChart3 },
+        { path: '/shopify/orders', label: 'Orders', icon: ShoppingCart },
+        { path: '/shopify/products', label: 'Products', icon: Package },
+        { path: '/shopify/inventory', label: 'Inventory', icon: Boxes },
+        { path: '/shopify/collections', label: 'Collections', icon: FolderOpen },
+        { path: '/shopify/customers', label: 'Customers', icon: ShopifyUsersIcon },
+        { path: '/shopify/discounts', label: 'Discounts', icon: Percent },
+        { path: '/shopify/checkouts', label: 'Abandoned checkouts', icon: ShoppingCart },
+        { path: '/shopify/refunds', label: 'Refunds', icon: RotateCcw },
+      ],
+    },
+    {
       label: 'App Settings',
       icon: Settings,
       isDropdown: true,
@@ -136,7 +167,13 @@ const Navbar = () => {
             if (item.isDropdown && 'subItems' in item) {
               const isOpen = openDropdown === item.label;
               const isSectionActive =
-                item.label === 'Audience' ? isAudienceActive : item.label === 'App Settings' ? isAppSettingsActive : false;
+                item.label === 'Audience'
+                  ? isAudienceActive
+                  : item.label === 'App Settings'
+                    ? isAppSettingsActive
+                    : item.label === 'Shopify'
+                      ? isShopifyActive
+                      : false;
               return (
                 <div key={item.label}>
                   <button

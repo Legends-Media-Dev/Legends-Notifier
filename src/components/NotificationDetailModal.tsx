@@ -9,8 +9,11 @@ import {
   Clock,
   Users,
   History,
+  CircleDollarSign,
+  ShoppingBag,
+  Info,
 } from 'lucide-react';
-import { Notification } from '../lib/api';
+import { CampaignAttribution, Notification } from '../lib/api';
 import { formatDate } from '../lib/utils';
 import LoadingButton from './LoadingButton';
 import ModalBusyOverlay from './ModalBusyOverlay';
@@ -39,6 +42,9 @@ interface NotificationDetailModalProps {
   isDuplicating?: boolean;
   isDeleting?: boolean;
   isActionPending?: boolean;
+  attribution?: CampaignAttribution;
+  attributionCurrency?: string;
+  attributionWindowHours?: number;
 }
 
 const NotificationDetailModal = ({
@@ -54,6 +60,9 @@ const NotificationDetailModal = ({
   isDuplicating = false,
   isDeleting = false,
   isActionPending = false,
+  attribution,
+  attributionCurrency = 'USD',
+  attributionWindowHours = 2,
 }: NotificationDetailModalProps) => {
   if (!notification) return null;
 
@@ -152,6 +161,54 @@ const NotificationDetailModal = ({
                     </div>
                   )}
                 </div>
+
+                {status === 'sent' && attribution && (
+                  <div className="rounded-2xl border border-accent/20 overflow-hidden">
+                    <div className="px-4 py-3 bg-gradient-to-r from-accent-light to-violet-50 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-ink">Mobile app sales after this push</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {attributionWindowHours}-hour post-send window
+                          {!attribution.windowComplete && ' · still measuring'}
+                        </p>
+                      </div>
+                      {!attribution.windowComplete && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-accent bg-white border border-accent/20 rounded-full px-2 py-1">
+                          Live
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 divide-x divide-gray-100">
+                      <div className="p-4">
+                        <div className="flex items-center gap-1.5 text-gray-400 mb-1.5">
+                          <CircleDollarSign className="w-3.5 h-3.5 text-accent" />
+                          <span className="text-[10px] font-semibold uppercase tracking-wide">App revenue</span>
+                        </div>
+                        <p className="text-xl font-bold text-ink tabular-nums">
+                          {new Intl.NumberFormat('en-US', {
+                            style: 'currency',
+                            currency: attributionCurrency,
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }).format(attribution.mobileAppRevenue)}
+                        </p>
+                      </div>
+                      <div className="p-4">
+                        <div className="flex items-center gap-1.5 text-gray-400 mb-1.5">
+                          <ShoppingBag className="w-3.5 h-3.5 text-accent" />
+                          <span className="text-[10px] font-semibold uppercase tracking-wide">App orders</span>
+                        </div>
+                        <p className="text-xl font-bold text-ink tabular-nums">
+                          {new Intl.NumberFormat('en-US').format(attribution.mobileAppOrders)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 flex items-start gap-2 text-[11px] leading-relaxed text-gray-500">
+                      <Info className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
+                      Observed mobile app purchases are a useful impact signal, but do not prove the push directly caused every order.
+                    </div>
+                  </div>
+                )}
 
                 {history.length > 0 && (
                   <div>

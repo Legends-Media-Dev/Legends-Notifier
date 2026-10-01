@@ -11,6 +11,7 @@ import Giveaway from './pages/Giveaway';
 import ShopCollections from './pages/ShopCollections';
 import GiveawaySnippet from './pages/GiveawaySnippet';
 import CategorySnippet from './pages/CategorySnippet';
+import Shopify from './pages/Shopify';
 
 function App() {
   return (
@@ -31,6 +32,8 @@ function App() {
                       <Route path="/users" element={<Users />} />
                       <Route path="/segments" element={<Segments />} />
                       <Route path="/giveaway" element={<Giveaway />} />
+                      <Route path="/shopify" element={<Shopify />} />
+                      <Route path="/shopify/:tab" element={<Shopify />} />
                       <Route path="/new-notification" element={<Navigate to="/campaigns" replace />} />
                       <Route path="/app-settings/shop-collections" element={<ShopCollections />} />
                       <Route path="/app-settings/home/giveaway-snippet" element={<GiveawaySnippet />} />
